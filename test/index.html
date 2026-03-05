@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Page - Bug Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .page-content {
+            flex: 1;
+        }
+
+        .product-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            margin: 50px auto;
+            text-align: center;
+        }
+
+        .price {
+            font-size: 24px;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        /* Report Issue Section - pinned to bottom */
+        .report-section {
+            max-width: 400px;
+            margin: 30px auto 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .report-section h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+
+        .report-section textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .report-section button {
+            margin-top: 10px;
+            background-color: #e74c3c;
+            width: 100%;
+        }
+
+        .report-section button:hover {
+            background-color: #c0392b;
+        }
+
+        .report-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .report-status.success {
+            background-color: #d4edda;
+            color: #155724;
+            display: block;
+        }
+
+        .report-status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+
+        .report-status.loading {
+            background-color: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+
+        /* 🐛 BUG 1: Visual Regression (For Phase 2 YOLOv8 testing) */
+        /* This banner purposely overlaps the Add to Cart button */
+        .annoying-banner {
+            position: fixed;
+            bottom: 35%;
+            left: 0;
+            width: 100%;
+            height: 300px;
+            background-color: rgba(255, 0, 0, 0.8);
+            color: white;
+            text-align: center;
+            padding: 15px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="annoying-banner">
+        FLASH SALE! 50% OFF ALL RUNNING GEAR!
+    </div>
+
+    <div class="page-content">
+        <div class="product-card">
+            <h2>Elite Marathon Training Shoes</h2>
+            <p>Engineered for high-endurance performance and sub-4:30 finish times.</p>
+            <div class="price">$120.00</div>
+
+            <button id="add-to-cart-btn">Add to Cart</button>
+        </div>
+    </div>
+
+    <!-- Report Issue Section - at bottom of page -->
+    <div class="report-section">
+        <h3>🐛 Report an Issue</h3>
+        <textarea id="bug-report-text" placeholder="Describe the issue you're experiencing..."></textarea>
+        <button id="submit-report-btn">Submit Bug Report</button>
+        <div id="report-status" class="report-status"></div>
+    </div>
+
+    <script>
+        // --- Bug Report Submission ---
+        document.getElementById('submit-report-btn').addEventListener('click', async () => {
+            const reportText = document.getElementById('bug-report-text').value.trim();
+            const statusDiv = document.getElementById('report-status');
+
+            if (!reportText) {
+                statusDiv.className = 'report-status error';
+                statusDiv.textContent = 'Please describe the issue before submitting.';
+                return;
+            }
+
+            statusDiv.className = 'report-status loading';
+            statusDiv.textContent = '⏳ Submitting report and running analysis...';
+
+            try {
+                const response = await fetch('http://127.0.0.1:5000/report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bug_report: reportText })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusDiv.className = 'report-status success';
+                    statusDiv.textContent = '✅ Bug report submitted successfully! Analysis is running in the backend.';
+                } else {
+                    statusDiv.className = 'report-status error';
+                    statusDiv.textContent = `❌ Error: ${data.error || 'Unknown error'}`;
+                }
+            } catch (err) {
+                statusDiv.className = 'report-status error';
+                statusDiv.textContent = '❌ Could not connect to the analysis server. Is it running on port 5000?';
+            }
+        });
+
+        // --- Add to Cart (with bug) ---
+        document.getElementById('add-to-cart-btn').addEventListener('click', () => {
+            // 🐛 BUG: Fatal JS Exception — TypeError
+            let cartState = null;
+            cartState.items.push("Shoes"); // Throws TypeError: Cannot read properties of null
+        });
+    </script>
+</body>
+
+</html>

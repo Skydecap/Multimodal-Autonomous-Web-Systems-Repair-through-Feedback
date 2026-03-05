@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Human-in-the-Loop Review Dashboard</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #16213e;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #0f3460;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            color: #e94560;
+        }
+
+        .header .status-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: #ff9800;
+            color: #000;
+        }
+
+        .status-applied {
+            background: #4caf50;
+            color: #fff;
+        }
+
+        .status-reverted {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .main-content {
+            padding: 20px;
+        }
+
+        /* Before/After Preview */
+        .preview-section {
+            margin-bottom: 20px;
+        }
+
+        .preview-section h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #e94560;
+        }
+
+        .preview-container {
+            display: flex;
+            gap: 15px;
+            height: 400px;
+        }
+
+        .preview-panel {
+            flex: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #0f3460;
+            position: relative;
+        }
+
+        .preview-panel .panel-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 52, 96, 0.9);
+            color: #e94560;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            z-index: 10;
+            text-align: center;
+        }
+
+        .preview-panel iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+
+        /* Analysis Section */
+        .analysis-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #0f3460;
+        }
+
+        .analysis-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
+        }
+
+        .analysis-content {
+            background: #0a0a23;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .analysis-content h2 {
+            color: #4fc3f7;
+            font-size: 15px;
+            margin-top: 15px;
+        }
+
+        .analysis-content .diff-add {
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .analysis-content .diff-remove {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        /* Action Buttons */
+        .actions-section {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-apply {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-apply:hover:not(:disabled) {
+            background: #388e3c;
+        }
+
+        .btn-revert {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-revert:hover:not(:disabled) {
+            background: #c62828;
+        }
+
+        .btn-push {
+            background: #2196f3;
+            color: white;
+        }
+
+        .btn-push:hover:not(:disabled) {
+            background: #1565c0;
+        }
+
+        .btn-refresh {
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-refresh:hover:not(:disabled) {
+            background: #e65100;
+        }
+
+        /* Feedback Section */
+        .feedback-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+            margin-bottom: 20px;
+        }
+
+        .feedback-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
+        }
+
+        .feedback-section textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #0a0a23;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .feedback-section textarea::placeholder {
+            color: #666;
+        }
+
+        .feedback-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-feedback {
+            background: #9c27b0;
+            color: white;
+        }
+
+        .btn-feedback:hover:not(:disabled) {
+            background: #6a1b9a;
+        }
+
+        /* Status Messages */
+        .status-msg {
+            padding: 10px 16px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status-msg.show {
+            display: block;
+        }
+
+        .status-msg.info {
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid #2196f3;
+            color: #90caf9;
+        }
+
+        .status-msg.success {
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid #4caf50;
+            color: #a5d6a7;
+        }
+
+        .status-msg.error {
+            background: rgba(244, 67, 54, 0.15);
+            border: 1px solid #f44336;
+            color: #ef9a9a;
+        }
+
+        .status-msg.loading {
+            background: rgba(255, 152, 0, 0.15);
+            border: 1px solid #ff9800;
+            color: #ffe0b2;
+        }
+
+        /* Iteration History */
+        .history-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+
+        .history-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
+        }
+
+        .history-item {
+            padding: 10px;
+            border-bottom: 1px solid #0f3460;
+            font-size: 13px;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-item .iter-label {
+            color: #ff9800;
+            font-weight: bold;
+        }
+
+        .history-item .iter-feedback {
+            color: #aaa;
+            font-style: italic;
+            margin-top: 4px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🔍 Human-in-the-Loop Review Dashboard</h1>
+        <span id="patch-status" class="status-badge status-pending">Pending Review</span>
+    </div>
+
+    <div class="main-content">
+        <!-- Status Message -->
+        <div id="status-msg" class="status-msg"></div>
+
+        <!-- Before / After Preview -->
+        <div class="preview-section">
+            <h2>📺 Live Preview — Before & After</h2>
+            <div class="preview-container">
+                <div class="preview-panel">
+                    <div class="panel-label">BEFORE (Original)</div>
+                    <iframe id="iframe-before" src="http://127.0.0.1:3000"></iframe>
+                </div>
+                <div class="preview-panel">
+                    <div class="panel-label">AFTER (Patched)</div>
+                    <iframe id="iframe-after" src="http://127.0.0.1:3000"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="actions-section">
+            <button id="btn-apply" class="btn btn-apply" onclick="applyPatch()">✅ Apply Patch</button>
+            <button id="btn-revert" class="btn btn-revert" onclick="revertPatch()" disabled>↩️ Revert</button>
+            <button id="btn-push" class="btn btn-push" onclick="pushCode()" disabled>🚀 Push Code</button>
+            <button id="btn-refresh" class="btn btn-refresh" onclick="refreshPreviews()">🔄 Refresh Previews</button>
+        </div>
+
+        <!-- RAG Analysis -->
+        <div class="analysis-section">
+            <h2>🧠 RAG Analysis & Suggested Fix</h2>
+            <div id="analysis-content" class="analysis-content">Loading analysis...</div>
+        </div>
+
+        <!-- Feedback Section -->
+        <div class="feedback-section">
+            <h2>💬 Not Satisfied? Provide Feedback</h2>
+            <textarea id="feedback-text"
+                placeholder="Describe what's wrong with the suggested fix, what should change, or additional context..."></textarea>
+            <div class="feedback-actions">
+                <button class="btn btn-feedback" onclick="submitFeedback()">🔁 Re-analyze with Feedback</button>
+            </div>
+        </div>
+
+        <!-- Iteration History -->
+        <div class="history-section">
+            <h2>📜 Iteration History</h2>
+            <div id="history-list">
+                <div class="history-item" style="color: #666;">No iterations yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = 'http://127.0.0.1:5000';
+        let patchApplied = false;
+        let iterations = [];
+
+        // --- Load analysis on page load ---
+        window.addEventListener('DOMContentLoaded', loadAnalysis);
+
+        async function loadAnalysis() {
+            try {
+                const res = await fetch(`${API}/review/analysis`);
+                const data = await res.json();
+                if (data.analysis) {
+                    document.getElementById('analysis-content').innerHTML = formatMarkdown(data.analysis);
+                } else {
+                    document.getElementById('analysis-content').textContent =
+                        'No analysis available. Run the workflow first via the product page.';
+                }
+                if (data.iterations) {
+                    iterations = data.iterations;
+                    renderHistory();
+                }
+                if (data.patch_applied) {
+                    patchApplied = true;
+                    updatePatchStatus('applied');
+                }
+            } catch (err) {
+                document.getElementById('analysis-content').textContent =
+                    'Could not connect to server. Is it running on port 5000?';
+            }
+        }
+
+        // --- Apply Patch ---
+        async function applyPatch() {
+            showStatus('loading', '<span class="spinner"></span> Applying patch...');
+            disableButtons(true);
+
+            try {
+                const res = await fetch(`${API}/review/apply`, { method: 'POST' });
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    patchApplied = true;
+                    updatePatchStatus('applied');
+                    showStatus('success', `✅ Patch applied! ${data.files_modified} file(s) modified.`);
+                    document.getElementById('btn-revert').disabled = false;
+                    document.getElementById('btn-push').disabled = false;
+                    // Refresh the "after" iframe
+                    setTimeout(() => {
+                        document.getElementById('iframe-after').src =
+                            'http://127.0.0.1:3000?' + Date.now();
+                    }, 500);
+                } else {
+                    showStatus('error', `❌ ${data.error || 'Failed to apply patch'}`);
+                }
+            } catch (err) {
+                showStatus('error', '❌ Could not connect to server.');
+            }
+            disableButtons(false);
+        }
+
+        // --- Revert Patch ---
+        async function revertPatch() {
+            showStatus('loading', '<span class="spinner"></span> Reverting changes...');
+            disableButtons(true);
+
+            try {
+                const res = await fetch(`${API}/review/revert`, { method: 'POST' });
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    patchApplied = false;
+                    updatePatchStatus('reverted');
+                    showStatus('success', '↩️ Changes reverted to original.');
+                    document.getElementById('btn-revert').disabled = true;
+                    document.getElementById('btn-push').disabled = true;
+                    setTimeout(() => {
+                        document.getElementById('iframe-after').src =
+                            'http://127.0.0.1:3000?' + Date.now();
+                    }, 500);
+                } else {
+                    showStatus('error', `❌ ${data.error || 'Failed to revert'}`);
+                }
+            } catch (err) {
+                showStatus('error', '❌ Could not connect to server.');
+            }
+            disableButtons(false);
+        }
+
+        // --- Push Code ---
+        async function pushCode() {
+            if (!confirm('Push the patched code to git? This will commit and push.')) return;
+
+            showStatus('loading', '<span class="spinner"></span> Committing and pushing...');
+            disableButtons(true);
+
+            try {
+                const res = await fetch(`${API}/review/push`, { method: 'POST' });
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    showStatus('success', `🚀 Code pushed! Commit: ${data.commit_message}`);
+                } else {
+                    showStatus('error', `❌ ${data.error || 'Push failed'}`);
+                }
+            } catch (err) {
+                showStatus('error', '❌ Could not connect to server.');
+            }
+            disableButtons(false);
+        }
+
+        // --- Submit Feedback ---
+        async function submitFeedback() {
+            const feedback = document.getElementById('feedback-text').value.trim();
+            if (!feedback) {
+                showStatus('error', '⚠️ Please enter your feedback first.');
+                return;
+            }
+
+            showStatus('loading', '<span class="spinner"></span> Re-analyzing with your feedback... This may take a minute.');
+            disableButtons(true);
+
+            try {
+                const res = await fetch(`${API}/review/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feedback })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    showStatus('success', '🔁 Re-analysis complete! Review the new suggestions below.');
+                    document.getElementById('analysis-content').innerHTML = formatMarkdown(data.analysis);
+                    document.getElementById('feedback-text').value = '';
+                    iterations = data.iterations || iterations;
+                    renderHistory();
+                    // Revert if patch was applied
+                    if (patchApplied) {
+                        await revertPatch();
+                    }
+                    updatePatchStatus('pending');
+                } else {
+                    showStatus('error', `❌ ${data.error || 'Feedback failed'}`);
+                }
+            } catch (err) {
+                showStatus('error', '❌ Could not connect to server.');
+            }
+            disableButtons(false);
+        }
+
+        // --- Refresh Previews ---
+        function refreshPreviews() {
+            const ts = Date.now();
+            document.getElementById('iframe-before').src = 'http://127.0.0.1:3000?' + ts;
+            document.getElementById('iframe-after').src = 'http://127.0.0.1:3000?' + (ts + 1);
+            showStatus('info', '🔄 Previews refreshed.');
+        }
+
+        // --- Helpers ---
+        function showStatus(type, html) {
+            const el = document.getElementById('status-msg');
+            el.className = `status-msg show ${type}`;
+            el.innerHTML = html;
+        }
+
+        function updatePatchStatus(state) {
+            const badge = document.getElementById('patch-status');
+            badge.className = 'status-badge';
+            if (state === 'applied') {
+                badge.classList.add('status-applied');
+                badge.textContent = 'Patch Applied';
+            } else if (state === 'reverted') {
+                badge.classList.add('status-reverted');
+                badge.textContent = 'Reverted';
+            } else {
+                badge.classList.add('status-pending');
+                badge.textContent = 'Pending Review';
+            }
+        }
+
+        function disableButtons(disabled) {
+            document.querySelectorAll('.btn').forEach(btn => {
+                if (disabled) btn.setAttribute('data-was-disabled', btn.disabled);
+                btn.disabled = disabled;
+            });
+            if (!disabled) {
+                document.getElementById('btn-revert').disabled = !patchApplied;
+                document.getElementById('btn-push').disabled = !patchApplied;
+            }
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            if (!iterations.length) {
+                list.innerHTML = '<div class="history-item" style="color: #666;">No iterations yet.</div>';
+                return;
+            }
+            list.innerHTML = iterations.map((it, i) => `
+                <div class="history-item">
+                    <div><span class="iter-label">Iteration ${i + 1}</span> — ${it.timestamp || ''}</div>
+                    ${it.feedback ? `<div class="iter-feedback">Feedback: "${it.feedback}"</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function formatMarkdown(text) {
+            // Basic markdown-to-html for display
+            return text
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                .replace(/^### (.+)$/gm, '<h3 style="color:#ff9800;font-size:14px;margin-top:12px;">$1</h3>')
+                .replace(/```diff\n([\s\S]*?)```/g, (m, code) => {
+                    const highlighted = code.split('\n').map(line => {
+                        if (line.startsWith('+')) return `<span class="diff-add">${line}</span>`;
+                        if (line.startsWith('-')) return `<span class="diff-remove">${line}</span>`;
+                        return line;
+                    }).join('\n');
+                    return `<pre style="background:#111;padding:10px;border-radius:4px;margin:8px 0;">${highlighted}</pre>`;
+                })
+                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#111;padding:10px;border-radius:4px;margin:8px 0;">$2</pre>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`(.+?)`/g, '<code style="background:#222;padding:2px 5px;border-radius:3px;">$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+    </script>
+</body>
+
+</html>

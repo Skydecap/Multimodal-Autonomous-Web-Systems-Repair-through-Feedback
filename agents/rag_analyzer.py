@@ -175,6 +175,14 @@ Your task:
 3. Provide the EXACT code fix as a diff (showing the old code and new code).
 4. If there are multiple bugs, address each one separately.
 
+IMPORTANT DIFF FORMAT RULES:
+- Each diff block MUST start with the target filename as: --- a/FILENAME
+- Show ONLY the lines being removed (prefixed with -) and the lines being added (prefixed with +)
+- Do NOT include unchanged context lines in the diff
+- Do NOT include @@ hunk headers
+- Use the EXACT code from the source files (matching indentation, quotes, etc.)
+- Each - line must match an actual line in the source file
+
 Format your response as:
 
 ## Root Cause Analysis
@@ -185,8 +193,9 @@ Format your response as:
 
 ## Suggested Fix
 ```diff
-- old code
-+ new code
+--- a/index.html
+- old line of code that exists in the file
++ new corrected line of code
 ```
 
 ## Additional Notes
@@ -221,3 +230,134 @@ Format your response as:
         "root_cause_analysis": analysis,
         "relevant_files": [doc.metadata.get("source", "") for doc in retrieved_docs if doc.metadata.get("type") == "source_code"],
     }
+
+
+async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
+    """
+    Re-run RAG analysis incorporating human feedback.
+    Uses the same RAG pipeline but adds the previous analysis + feedback to the prompt.
+    """
+    print(f"\n{'='*60}")
+    print(f"[RAG Re-analyzer] Re-analyzing with feedback...")
+    print(f"[RAG Re-analyzer] Feedback: {feedback}")
+    print(f"{'='*60}")
+
+    trace_summary = state.get("trace_summary", {})
+    bug_report = state.get("bug_report", "")
+    previous_analysis = state.get("root_cause_analysis", "")
+
+    # --- 1. Collect documents (same as before) ---
+    source_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "test")
+    source_docs = _load_website_sources(source_dir)
+    trace_docs = _build_trace_documents(trace_summary, bug_report)
+    all_docs = source_docs + trace_docs
+
+    if not all_docs:
+        return "No documents available for re-analysis."
+
+    # --- 2. Chunk and index ---
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1500,
+        chunk_overlap=200,
+        separators=["\n### ", "\n## ", "\n\n", "\n", " "],
+    )
+    chunks = splitter.split_documents(all_docs)
+
+    embeddings = OpenAIEmbeddings(
+        model="text-embedding-3-small",
+        base_url="https://models.inference.ai.azure.com",
+        api_key=os.getenv("GITHUB_TOKEN"),
+    )
+
+    vectorstore = FAISS.from_documents(chunks, embeddings)
+
+    # --- 3. Retrieve with feedback-enriched query ---
+    console_errors = trace_summary.get("console_errors", [])
+    error_texts = " | ".join(e.get("text", "")[:100] for e in console_errors[:5])
+
+    retrieval_query = (
+        f"Bug report: {bug_report}\n"
+        f"Errors: {error_texts}\n"
+        f"Human feedback on previous fix: {feedback}\n"
+        f"Find the source code and suggest a better fix."
+    )
+
+    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=8)
+    context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
+
+    # --- 4. LLM with feedback context ---
+    llm = ChatOpenAI(
+        model="gpt-4o",
+        temperature=0,
+        base_url="https://models.inference.ai.azure.com",
+        api_key=os.getenv("GITHUB_TOKEN"),
+    )
+
+    feedback_prompt = f"""You are a senior web developer and bug-fixing expert.
+
+You previously suggested a fix for a bug, but the human reviewer has provided feedback.
+You must revise your analysis and provide an UPDATED fix based on the feedback.
+
+## Previous Analysis
+{previous_analysis}
+
+## Human Feedback
+{feedback}
+
+## Instructions
+1. Consider the human's feedback carefully.
+2. Re-examine the source code and trace data.
+3. Provide a REVISED root cause analysis and code fix.
+4. Your diff blocks must show the EXACT old code and new replacement code.
+
+IMPORTANT DIFF FORMAT RULES:
+- Each diff block MUST start with the target filename as: --- a/FILENAME
+- Show ONLY the lines being removed (prefixed with -) and the lines being added (prefixed with +)
+- Do NOT include unchanged context lines in the diff
+- Do NOT include @@ hunk headers
+- Use the EXACT code from the source files (matching indentation, quotes, etc.)
+- Each - line must match an actual line in the source file
+
+Format your response as:
+
+## Root Cause Analysis (Revised)
+[Updated explanation]
+
+## Bug Details
+[Updated details]
+
+## Suggested Fix
+```diff
+--- a/index.html
+- old line of code that exists in the file
++ new corrected line of code
+```
+
+## Additional Notes
+[Any other recommendations]
+
+---
+
+### BUG REPORT
+{bug_report}
+
+### RETRIEVED CONTEXT (Source code + Trace data)
+{context_text}
+"""
+
+    print(f"[RAG] Sending re-analysis request to LLM...")
+    response = await llm.ainvoke([HumanMessage(content=feedback_prompt)])
+    analysis = response.content
+
+    print(f"\n[RAG Re-analyzer] Re-analysis complete.")
+    print(f"\n{'='*60}")
+    print(analysis)
+    print(f"{'='*60}")
+
+    # Save updated analysis
+    os.makedirs("artifacts", exist_ok=True)
+    with open("artifacts/rag_analysis.md", "w", encoding="utf-8") as f:
+        f.write(analysis)
+    print(f"[RAG] Updated analysis saved to artifacts/rag_analysis.md")
+
+    return analysis

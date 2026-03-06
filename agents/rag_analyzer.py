@@ -1,11 +1,12 @@
 import os
 import json
 import glob
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
 from core.state import AgentState
 
 # File extensions to index from the website source
@@ -132,10 +133,8 @@ async def rag_analyzer_node(state: AgentState):
     chunks = splitter.split_documents(all_docs)
     print(f"[RAG] Split into {len(chunks)} chunks")
 
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
     )
 
     vectorstore = FAISS.from_documents(chunks, embeddings)
@@ -159,10 +158,10 @@ async def rag_analyzer_node(state: AgentState):
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
 
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model="qwen/qwen3-235b-a22b-thinking-2507",
         temperature=0,
-        base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("open_router_key"),
     )
 
     analysis_prompt = f"""You are a senior web developer and bug-fixing expert.
@@ -173,15 +172,24 @@ Your task:
 1. Identify the ROOT CAUSE of the bug in the source code.
 2. Explain what is wrong and why.
 3. Provide the EXACT code fix as a diff (showing the old code and new code).
-4. If there are multiple bugs, address each one separately.
+4. If there are multiple bugs, provide a SEPARATE diff block for each fix.
+5. Make sure your fixes are CONSISTENT across all files — e.g. if one file writes data to localStorage in a certain format, any other file reading it must use the same format.
 
-IMPORTANT DIFF FORMAT RULES:
-- Each diff block MUST start with the target filename as: --- a/FILENAME
-- Show ONLY the lines being removed (prefixed with -) and the lines being added (prefixed with +)
-- Do NOT include unchanged context lines in the diff
-- Do NOT include @@ hunk headers
-- Use the EXACT code from the source files (matching indentation, quotes, etc.)
-- Each - line must match an actual line in the source file
+CRITICAL DIFF FORMAT RULES:
+- Each diff block MUST start with: --- a/FILENAME (the filename relative to the project)
+- Each line to REMOVE starts with - (this line must EXACTLY match a real line in the source file)
+- Each line to ADD starts with + (the replacement line)
+- Pair each - line with its corresponding + line (one-to-one replacement)
+- Do NOT include unchanged context lines
+- Do NOT include @@ hunk headers or +++ lines
+- Each - line and + line should contain the code WITHOUT leading whitespace (indentation is auto-detected)
+
+Example of a CORRECT diff:
+```diff
+--- a/index.html
+- let x = null;
++ let x = {{}};
+```
 
 Format your response as:
 
@@ -189,13 +197,19 @@ Format your response as:
 [Explain what's wrong]
 
 ## Bug Details
-[For each bug found, explain the issue]
+[For each bug found, explain the issue in a separate subsection]
 
 ## Suggested Fix
 ```diff
 --- a/index.html
-- old line of code that exists in the file
+- old line of code
 + new corrected line of code
+```
+
+```diff
+--- a/index.html
+- another old line
++ another new line
 ```
 
 ## Additional Notes
@@ -263,10 +277,8 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
     )
     chunks = splitter.split_documents(all_docs)
 
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
     )
 
     vectorstore = FAISS.from_documents(chunks, embeddings)
@@ -287,10 +299,10 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
 
     # --- 4. LLM with feedback context ---
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model="qwen/qwen3-235b-a22b-thinking-2507",
         temperature=0,
-        base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("open_router_key"),
     )
 
     feedback_prompt = f"""You are a senior web developer and bug-fixing expert.
@@ -308,15 +320,18 @@ You must revise your analysis and provide an UPDATED fix based on the feedback.
 1. Consider the human's feedback carefully.
 2. Re-examine the source code and trace data.
 3. Provide a REVISED root cause analysis and code fix.
-4. Your diff blocks must show the EXACT old code and new replacement code.
+4. Make sure your fixes are CONSISTENT across all files — e.g. if one file writes data to localStorage in a certain format, any other file reading it must use the same format.
 
-IMPORTANT DIFF FORMAT RULES:
-- Each diff block MUST start with the target filename as: --- a/FILENAME
-- Show ONLY the lines being removed (prefixed with -) and the lines being added (prefixed with +)
-- Do NOT include unchanged context lines in the diff
-- Do NOT include @@ hunk headers
-- Use the EXACT code from the source files (matching indentation, quotes, etc.)
-- Each - line must match an actual line in the source file
+CRITICAL DIFF FORMAT RULES:
+- Each diff block MUST start with: --- a/FILENAME (the filename relative to the project)
+- Each line to REMOVE starts with - (this line must EXACTLY match a real line in the source file)
+- Each line to ADD starts with + (the replacement line)
+- Pair each - line with its corresponding + line (one-to-one replacement)
+- Do NOT include unchanged context lines
+- Do NOT include @@ hunk headers or +++ lines
+- Make sure to stick with the domain of web server while performing changes in end-points
+- Provide a SEPARATE diff block for each independent fix
+- Each - line and + line should contain the code WITHOUT leading whitespace (indentation is auto-detected)
 
 Format your response as:
 
@@ -329,8 +344,14 @@ Format your response as:
 ## Suggested Fix
 ```diff
 --- a/index.html
-- old line of code that exists in the file
+- old line of code
 + new corrected line of code
+```
+
+```diff
+--- a/index.html
+- another old line
++ another new line
 ```
 
 ## Additional Notes

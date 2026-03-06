@@ -1,5 +1,6 @@
 import asyncio
-import subprocess
+import os
+import traceback
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -8,7 +9,7 @@ from flask_cors import CORS
 from core.state import AgentState
 from graph import build_graph
 from utils.patch_engine import (
-    apply_patch, revert_patch, get_patch_state, add_iteration
+    apply_patch, revert_patch, get_patch_state, add_iteration, preview_patch
 )
 from agents.rag_analyzer import rag_reanalyze_with_feedback
 
@@ -17,6 +18,9 @@ CORS(flask_app)  # Allow requests from the test page on port 3000
 
 # In-memory store for the latest workflow result
 _latest_state = {}
+
+# In-memory store for preview (patched content without modifying files)
+_preview_data = {}
 
 
 async def run_workflow(bug_report: str) -> dict:
@@ -44,12 +48,21 @@ async def run_workflow(bug_report: str) -> dict:
     return final_state
 
 
+def _extract_real_error(e: Exception) -> str:
+    """Extract the actual error from ExceptionGroups / TaskGroup wrappers."""
+    if isinstance(e, BaseExceptionGroup):
+        # Unwrap the group to find the real cause
+        for sub in e.exceptions:
+            return _extract_real_error(sub)
+    return f"{type(e).__name__}: {e}"
+
+
 @flask_app.route("/report", methods=["POST"])
 def handle_report():
     """Receive a bug report from the frontend and run the analysis."""
     data = request.get_json()
     bug_report = data.get("bug_report", "").strip()
-
+    print("hello")
     if not bug_report:
         return jsonify({"error": "Bug report text is required."}), 400
 
@@ -69,9 +82,11 @@ def handle_report():
                 "console_errors": trace.get("console_errors", []),
             },
         })
-    except Exception as e:
-        print(f"[Server Error] {e}")
-        return jsonify({"error": str(e)}), 500
+    except BaseException as e:
+        real_error = _extract_real_error(e) if isinstance(e, BaseExceptionGroup) else str(e)
+        print(f"[Server Error] {real_error}")
+        traceback.print_exc()
+        return jsonify({"error": real_error}), 500
 
 
 # ============================================================
@@ -92,16 +107,30 @@ def get_analysis():
 
 @flask_app.route("/review/apply", methods=["POST"])
 def apply_patch_route():
-    """Apply the LLM-suggested patch to the source files."""
+    """Preview the LLM-suggested patch without modifying source files."""
+    global _preview_data
     analysis = _latest_state.get("root_cause_analysis", "")
     if not analysis:
         return jsonify({"status": "error", "error": "No analysis available. Run workflow first."}), 400
 
-    result = apply_patch(analysis)
+    result = preview_patch(analysis)
     if result["status"] == "success":
-        return jsonify(result)
+        _preview_data = result.get("previews", {})
+        return jsonify({
+            "status": "success",
+            "files_modified": result["files_modified"],
+            "files": list(_preview_data.keys()),
+        })
     else:
         return jsonify(result), 400
+
+
+@flask_app.route("/review/preview/<path:filename>", methods=["GET"])
+def serve_preview(filename):
+    """Serve the in-memory patched preview of a file."""
+    if filename in _preview_data:
+        return _preview_data[filename], 200, {"Content-Type": "text/html; charset=utf-8"}
+    return jsonify({"error": "Preview not available for this file."}), 404
 
 
 @flask_app.route("/review/revert", methods=["POST"])
@@ -116,24 +145,16 @@ def revert_patch_route():
 
 @flask_app.route("/review/push", methods=["POST"])
 def push_code():
-    """Git commit and push the patched code."""
-    patch_state = get_patch_state()
-    if not patch_state.get("applied"):
-        return jsonify({"status": "error", "error": "Apply the patch first before pushing."}), 400
+    """Apply the patch to the actual source files in test/."""
+    analysis = _latest_state.get("root_cause_analysis", "")
+    if not analysis:
+        return jsonify({"status": "error", "error": "No analysis available. Run workflow first."}), 400
 
-    try:
-        project_root = os.path.dirname(__file__)
-        commit_msg = f"fix: auto-patch from RAG analysis (iteration {len(patch_state.get('iterations', []))})"
-
-        subprocess.run(["git", "add", "."], cwd=project_root, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", commit_msg], cwd=project_root, check=True, capture_output=True)
-        subprocess.run(["git", "push"], cwd=project_root, check=True, capture_output=True)
-
-        return jsonify({"status": "success", "commit_message": commit_msg})
-    except subprocess.CalledProcessError as e:
-        return jsonify({"status": "error", "error": f"Git error: {e.stderr.decode()[:300]}"}), 500
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+    result = apply_patch(analysis)
+    if result["status"] == "success":
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
 
 
 @flask_app.route("/review/feedback", methods=["POST"])
@@ -174,7 +195,6 @@ def handle_feedback():
 
 
 if __name__ == "__main__":
-    import os
     print("\n🚀 Bug Report Server running on http://127.0.0.1:5000")
     print("   📺 Review Dashboard: http://127.0.0.1:3000/review.html")
     print("   Submit reports via POST /report or from the web UI.\n")

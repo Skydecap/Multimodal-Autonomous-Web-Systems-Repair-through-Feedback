@@ -355,7 +355,6 @@
     </div>
 
     <div class="main-content">
-        <!-- Status Message -->
         <div id="status-msg" class="status-msg"></div>
 
         <!-- Before / After Preview -->
@@ -377,7 +376,7 @@
         <div class="actions-section">
             <button id="btn-apply" class="btn btn-apply" onclick="applyPatch()">✅ Apply Patch</button>
             <button id="btn-revert" class="btn btn-revert" onclick="revertPatch()" disabled>↩️ Revert</button>
-            <button id="btn-push" class="btn btn-push" onclick="pushCode()" disabled>🚀 Push Code</button>
+            <button id="btn-push" class="btn btn-push" onclick="pushCode()" disabled>🚀 Apply to Files</button>
             <button id="btn-refresh" class="btn btn-refresh" onclick="refreshPreviews()">🔄 Refresh Previews</button>
         </div>
 
@@ -411,7 +410,6 @@
         let patchApplied = false;
         let iterations = [];
 
-        // --- Load analysis on page load ---
         window.addEventListener('DOMContentLoaded', loadAnalysis);
 
         async function loadAnalysis() {
@@ -438,28 +436,23 @@
             }
         }
 
-        // --- Apply Patch ---
         async function applyPatch() {
-            showStatus('loading', '<span class="spinner"></span> Applying patch...');
+            showStatus('loading', '<span class="spinner"></span> Generating preview...');
             disableButtons(true);
-
             try {
                 const res = await fetch(`${API}/review/apply`, { method: 'POST' });
                 const data = await res.json();
-
                 if (res.ok && data.status === 'success') {
                     patchApplied = true;
                     updatePatchStatus('applied');
-                    showStatus('success', `✅ Patch applied! ${data.files_modified} file(s) modified.`);
+                    showStatus('success', `✅ Preview ready! ${data.files_modified} file(s) patched (preview only — files not changed).`);
                     document.getElementById('btn-revert').disabled = false;
                     document.getElementById('btn-push').disabled = false;
-                    // Refresh the "after" iframe
                     setTimeout(() => {
-                        document.getElementById('iframe-after').src =
-                            'http://127.0.0.1:3000?' + Date.now();
+                        document.getElementById('iframe-after').src = `${API}/review/preview/index.html?` + Date.now();
                     }, 500);
                 } else {
-                    showStatus('error', `❌ ${data.error || 'Failed to apply patch'}`);
+                    showStatus('error', `❌ ${data.error || 'Failed to generate preview'}`);
                 }
             } catch (err) {
                 showStatus('error', '❌ Could not connect to server.');
@@ -467,49 +460,30 @@
             disableButtons(false);
         }
 
-        // --- Revert Patch ---
         async function revertPatch() {
-            showStatus('loading', '<span class="spinner"></span> Reverting changes...');
-            disableButtons(true);
-
-            try {
-                const res = await fetch(`${API}/review/revert`, { method: 'POST' });
-                const data = await res.json();
-
-                if (res.ok && data.status === 'success') {
-                    patchApplied = false;
-                    updatePatchStatus('reverted');
-                    showStatus('success', '↩️ Changes reverted to original.');
-                    document.getElementById('btn-revert').disabled = true;
-                    document.getElementById('btn-push').disabled = true;
-                    setTimeout(() => {
-                        document.getElementById('iframe-after').src =
-                            'http://127.0.0.1:3000?' + Date.now();
-                    }, 500);
-                } else {
-                    showStatus('error', `❌ ${data.error || 'Failed to revert'}`);
-                }
-            } catch (err) {
-                showStatus('error', '❌ Could not connect to server.');
-            }
-            disableButtons(false);
+            patchApplied = false;
+            updatePatchStatus('reverted');
+            showStatus('success', '↩️ Preview cleared. Files were not modified.');
+            document.getElementById('btn-revert').disabled = true;
+            document.getElementById('btn-push').disabled = true;
+            document.getElementById('iframe-after').src = 'http://127.0.0.1:3000?' + Date.now();
         }
 
-        // --- Push Code ---
         async function pushCode() {
-            if (!confirm('Push the patched code to git? This will commit and push.')) return;
-
-            showStatus('loading', '<span class="spinner"></span> Committing and pushing...');
+            if (!confirm('Apply the patched code to the actual source files?')) return;
+            showStatus('loading', '<span class="spinner"></span> Applying changes to files...');
             disableButtons(true);
-
             try {
                 const res = await fetch(`${API}/review/push`, { method: 'POST' });
                 const data = await res.json();
-
                 if (res.ok && data.status === 'success') {
-                    showStatus('success', `🚀 Code pushed! Commit: ${data.commit_message}`);
+                    showStatus('success', `🚀 Changes applied to ${data.files_modified} file(s)!`);
+                    setTimeout(() => {
+                        document.getElementById('iframe-before').src = 'http://127.0.0.1:3000?' + Date.now();
+                        document.getElementById('iframe-after').src = 'http://127.0.0.1:3000?' + Date.now();
+                    }, 500);
                 } else {
-                    showStatus('error', `❌ ${data.error || 'Push failed'}`);
+                    showStatus('error', `❌ ${data.error || 'Failed to apply changes'}`);
                 }
             } catch (err) {
                 showStatus('error', '❌ Could not connect to server.');
@@ -517,17 +491,14 @@
             disableButtons(false);
         }
 
-        // --- Submit Feedback ---
         async function submitFeedback() {
             const feedback = document.getElementById('feedback-text').value.trim();
             if (!feedback) {
                 showStatus('error', '⚠️ Please enter your feedback first.');
                 return;
             }
-
             showStatus('loading', '<span class="spinner"></span> Re-analyzing with your feedback... This may take a minute.');
             disableButtons(true);
-
             try {
                 const res = await fetch(`${API}/review/feedback`, {
                     method: 'POST',
@@ -535,14 +506,12 @@
                     body: JSON.stringify({ feedback })
                 });
                 const data = await res.json();
-
                 if (res.ok && data.status === 'success') {
                     showStatus('success', '🔁 Re-analysis complete! Review the new suggestions below.');
                     document.getElementById('analysis-content').innerHTML = formatMarkdown(data.analysis);
                     document.getElementById('feedback-text').value = '';
                     iterations = data.iterations || iterations;
                     renderHistory();
-                    // Revert if patch was applied
                     if (patchApplied) {
                         await revertPatch();
                     }
@@ -556,7 +525,6 @@
             disableButtons(false);
         }
 
-        // --- Refresh Previews ---
         function refreshPreviews() {
             const ts = Date.now();
             document.getElementById('iframe-before').src = 'http://127.0.0.1:3000?' + ts;
@@ -564,7 +532,6 @@
             showStatus('info', '🔄 Previews refreshed.');
         }
 
-        // --- Helpers ---
         function showStatus(type, html) {
             const el = document.getElementById('status-msg');
             el.className = `status-msg show ${type}`;
@@ -612,7 +579,6 @@
         }
 
         function formatMarkdown(text) {
-            // Basic markdown-to-html for display
             return text
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/^## (.+)$/gm, '<h2>$1</h2>')

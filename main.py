@@ -127,10 +127,31 @@ def apply_patch_route():
 
 @flask_app.route("/review/preview/<path:filename>", methods=["GET"])
 def serve_preview(filename):
-    """Serve the in-memory patched preview of a file."""
+    """Serve the in-memory patched preview of a file, or fall back to the original on disk."""
     if filename in _preview_data:
-        return _preview_data[filename], 200, {"Content-Type": "text/html; charset=utf-8"}
-    return jsonify({"error": "Preview not available for this file."}), 404
+        content = _preview_data[filename]
+    else:
+        # Serve the original unmodified file from disk
+        source_dir = os.path.join(os.path.dirname(__file__), "test")
+        filepath = os.path.join(source_dir, filename)
+        if not os.path.isfile(filepath):
+            return jsonify({"error": "File not found."}), 404
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+    # Determine content type
+    ext = os.path.splitext(filename)[1].lower()
+    content_types = {
+        ".html": "text/html; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+    }
+    ct = content_types.get(ext, "text/html; charset=utf-8")
+    return content, 200, {"Content-Type": ct}
 
 
 @flask_app.route("/review/revert", methods=["POST"])

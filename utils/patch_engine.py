@@ -33,25 +33,26 @@ def _save_patch_state(state: dict):
 
 def parse_diffs_from_analysis(analysis: str) -> list[dict]:
     """
-    Parse diff blocks from the RAG analysis markdown.
-    Handles unified diff headers (--- / +++ / @@) gracefully.
-    Returns a list of {removed, added, target_file, raw} dicts.
-    Each removed[i] -> added[i] is a single line replacement pair.
+    Parse diff blocks from the RAG analysis markdown into hunks.
+    Each hunk has a list of removed lines and added lines that form a logical replacement block.
+    Uses context lines (no +/-) to help locate changes in the source.
+    Returns a list of {hunks: [{removed, added, context_before}], target_file, raw} dicts.
     """
     diffs = []
-    # Match ```diff ... ``` blocks
     diff_pattern = re.compile(r"```diff\s*\n([\s\S]*?)```", re.MULTILINE)
     for match in diff_pattern.finditer(analysis):
         diff_text = match.group(1)
         target_file = None
-        # Collect pairs: group consecutive -/+ lines into replacement pairs
-        removed = []
-        added = []
+        hunks = []
+        current_removed = []
+        current_added = []
+        context_before = []
+        in_change = False
 
         for line in diff_text.strip().splitlines():
             stripped = line.rstrip()
 
-            # Skip unified diff metadata lines, extract filename
+            # Extract filename from metadata lines
             if stripped.startswith("--- "):
                 fname_match = re.search(r"---\s+[ab]/?([\S]+)", stripped)
                 if fname_match:
@@ -67,106 +68,151 @@ def parse_diffs_from_analysis(analysis: str) -> list[dict]:
             if stripped.startswith("diff --git"):
                 continue
 
-            # Parse diff lines
             if stripped.startswith("-"):
-                content = stripped[1:]  # Keep original spacing after the -
-                removed.append(content.strip())
+                in_change = True
+                current_removed.append(stripped[1:])
             elif stripped.startswith("+"):
-                content = stripped[1:]
-                added.append(content.strip())
-            # Context lines are ignored — we only care about changes
+                in_change = True
+                current_added.append(stripped[1:])
+            else:
+                # Context line — flush any pending hunk
+                if in_change and (current_removed or current_added):
+                    hunks.append({
+                        "removed": current_removed,
+                        "added": current_added,
+                        "context_before": list(context_before),
+                    })
+                    current_removed = []
+                    current_added = []
+                    in_change = False
+                # Keep last few context lines to help locate changes
+                context_before.append(stripped)
+                if len(context_before) > 3:
+                    context_before.pop(0)
 
-        if removed or added:
+        # Flush final hunk
+        if current_removed or current_added:
+            hunks.append({
+                "removed": current_removed,
+                "added": current_added,
+                "context_before": list(context_before),
+            })
+
+        if hunks:
             diffs.append({
-                "removed": removed,
-                "added": added,
+                "hunks": hunks,
                 "target_file": target_file,
                 "raw": diff_text.strip(),
             })
     return diffs
 
 
+def _find_block_in_lines(lines: list[str], block: list[str], start_from: int = 0) -> int:
+    """
+    Find a consecutive block of lines in the file.
+    Matches by stripped content. Returns the index of the first matching line, or -1.
+    """
+    if not block:
+        return -1
+    block_stripped = [b.strip() for b in block]
+    for i in range(start_from, len(lines) - len(block) + 1):
+        if all(lines[i + j].strip() == block_stripped[j] for j in range(len(block))):
+            return i
+    return -1
+
+
 def _apply_diff_to_file(filepath: str, diff: dict) -> bool:
     """
-    Apply a single diff to a file.
-    Strategy: for each removed line, find it in the file and replace with
-    the corresponding added line. Works even when removed lines are
-    non-consecutive in the source file.
-    Returns True if at least one replacement was made.
+    Apply a diff (with hunks) to a file.
+    For each hunk: find the removed lines as a consecutive block, replace with added lines.
+    Preserves the indentation of the first matched line.
     """
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
+        lines = f.read().splitlines()
 
-    removed = diff.get("removed", [])
-    added = diff.get("added", [])
+    hunks = diff.get("hunks", [])
+    if not hunks:
+        return False
+
     modified = False
 
-    if not removed and not added:
-        return False
+    for hunk in hunks:
+        removed = hunk.get("removed", [])
+        added = hunk.get("added", [])
 
-    # --- Handle pure additions (no removed lines) ---
-    if not removed and added:
-        # Can't apply additions without knowing where to insert
-        return False
-
-    lines = content.splitlines()
-
-    # --- Strategy: pair up removed→added and replace line by line ---
-    # Pair them: if there are more removed than added, extra removed lines get deleted.
-    # If more added than removed, extra added lines get appended after the last match.
-    max_pairs = max(len(removed), len(added))
-
-    for idx in range(min(len(removed), len(added))):
-        old_s = removed[idx].strip()
-        new_s = added[idx].strip()
-
-        if not old_s:
+        if not removed and not added:
             continue
 
-        # Skip if old == new (no change needed)
-        if old_s == new_s:
-            continue
-
-        # Find and replace in lines
-        for line_idx, file_line in enumerate(lines):
-            if file_line.strip() == old_s:
-                indent = file_line[:len(file_line) - len(file_line.lstrip())]
-                lines[line_idx] = indent + new_s
-                modified = True
-                print(f"    [Patch] Replaced: '{old_s}' → '{new_s}'")
-                break
-
-    # Handle extra removed lines (delete them)
-    if len(removed) > len(added):
-        for idx in range(len(added), len(removed)):
-            old_s = removed[idx].strip()
-            if not old_s:
-                continue
-            for line_idx, file_line in enumerate(lines):
-                if file_line.strip() == old_s:
-                    lines.pop(line_idx)
-                    modified = True
-                    print(f"    [Patch] Deleted: '{old_s}'")
-                    break
-
-    # Handle extra added lines (insert after last modified line)
-    if len(added) > len(removed):
-        # Find the position of the last removed line to insert after
-        last_match_idx = -1
         if removed:
-            last_old = removed[-1].strip()
-            for line_idx, file_line in enumerate(lines):
-                if file_line.strip() == last_old or (modified and line_idx > 0):
-                    last_match_idx = line_idx
-        
-        if last_match_idx >= 0:
-            indent = lines[last_match_idx][:len(lines[last_match_idx]) - len(lines[last_match_idx].lstrip())]
-            for idx in range(len(removed), len(added)):
-                new_s = added[idx].strip()
-                if new_s:
-                    lines.insert(last_match_idx + 1 + (idx - len(removed)), indent + new_s)
+            # Find the block of removed lines in the file
+            match_idx = _find_block_in_lines(lines, removed)
+            if match_idx < 0:
+                # Try matching individual lines as fallback
+                for r_line in removed:
+                    r_stripped = r_line.strip()
+                    if not r_stripped:
+                        continue
+                    for li, fl in enumerate(lines):
+                        if fl.strip() == r_stripped:
+                            match_idx = li
+                            break
+                    if match_idx >= 0:
+                        break
+
+            if match_idx >= 0:
+                # Detect indentation from the first matched line
+                first_line = lines[match_idx]
+                indent = first_line[:len(first_line) - len(first_line.lstrip())]
+
+                # Try to replace as a consecutive block first
+                block_idx = _find_block_in_lines(lines, removed)
+                if block_idx >= 0:
+                    # Replace the entire block
+                    new_lines = [indent + a.strip() for a in added]
+                    lines[block_idx:block_idx + len(removed)] = new_lines
                     modified = True
-                    print(f"    [Patch] Inserted: '{new_s}'")
+                    removed_preview = removed[0].strip()[:50]
+                    print(f"    [Patch] Replaced block ({len(removed)} lines → {len(added)} lines) starting with: '{removed_preview}'")
+                else:
+                    # Fallback: replace lines individually where found
+                    for r_line in removed:
+                        r_stripped = r_line.strip()
+                        if not r_stripped:
+                            continue
+                        for li, fl in enumerate(lines):
+                            if fl.strip() == r_stripped:
+                                lines.pop(li)
+                                modified = True
+                                print(f"    [Patch] Deleted: '{r_stripped}'")
+                                break
+                    # Insert added lines at the match position
+                    if added:
+                        insert_at = min(match_idx, len(lines))
+                        for ai, a_line in enumerate(added):
+                            lines.insert(insert_at + ai, indent + a_line.strip())
+                            modified = True
+                        print(f"    [Patch] Inserted {len(added)} line(s) at position {insert_at}")
+            else:
+                print(f"    [Patch] ❌ Could not find removed lines: {[r.strip()[:50] for r in removed[:3]]}")
+
+        elif added and not removed:
+            # Pure addition — use context_before to find insertion point
+            context = hunk.get("context_before", [])
+            insert_idx = len(lines)  # default: end of file
+            if context:
+                last_ctx = context[-1].strip()
+                for li, fl in enumerate(lines):
+                    if fl.strip() == last_ctx:
+                        insert_idx = li + 1
+                        break
+            indent = ""
+            if insert_idx > 0 and insert_idx <= len(lines):
+                prev = lines[insert_idx - 1]
+                indent = prev[:len(prev) - len(prev.lstrip())]
+            for ai, a_line in enumerate(added):
+                lines.insert(insert_idx + ai, indent + a_line.strip())
+                modified = True
+            print(f"    [Patch] Inserted {len(added)} new line(s) at position {insert_idx}")
 
     if modified:
         with open(filepath, "w", encoding="utf-8") as f:
@@ -201,8 +247,7 @@ def apply_patch(analysis: str) -> dict:
         target_file = diff.get("target_file")
 
         print(f"\n  [Diff #{i+1}] target_file={target_file}, "
-              f"removed={diff.get('removed', [])[:2]}, "
-              f"added={diff.get('added', [])[:2]}")
+              f"hunks={len(diff.get('hunks', []))}")
 
         # If the diff specifies a target file, try that file first
         if target_file:
@@ -238,15 +283,14 @@ def apply_patch(analysis: str) -> dict:
                     break
 
         if not applied:
-            details.append(f"Diff #{i+1} could not be matched (removed={diff.get('removed', [])[:3]})")
+            details.append(f"Diff #{i+1} could not be matched to any file")
             print(f"  [Diff #{i+1}] ❌ Could not match to any file")
 
     # Store the diffs so we can reverse them on revert
     applied_diffs = []
     for diff in diffs:
         applied_diffs.append({
-            "removed": diff.get("removed", []),
-            "added": diff.get("added", []),
+            "hunks": diff.get("hunks", []),
             "target_file": diff.get("target_file"),
         })
 
@@ -266,55 +310,73 @@ def apply_patch(analysis: str) -> dict:
 
 
 def _apply_diff_in_memory(content: str, diff: dict) -> str | None:
-    """Apply a diff to content in memory. Returns new content or None if no match."""
-    removed = diff.get("removed", [])
-    added = diff.get("added", [])
-
-    if not removed and not added:
-        return None
-    if not removed and added:
+    """Apply a diff (with hunks) to content in memory. Returns new content or None if no match."""
+    hunks = diff.get("hunks", [])
+    if not hunks:
         return None
 
     lines = content.splitlines()
     modified = False
 
-    for idx in range(min(len(removed), len(added))):
-        old_s = removed[idx].strip()
-        new_s = added[idx].strip()
-        if not old_s or old_s == new_s:
+    for hunk in hunks:
+        removed = hunk.get("removed", [])
+        added = hunk.get("added", [])
+
+        if not removed and not added:
             continue
-        for line_idx, file_line in enumerate(lines):
-            if file_line.strip() == old_s:
-                indent = file_line[:len(file_line) - len(file_line.lstrip())]
-                lines[line_idx] = indent + new_s
-                modified = True
-                break
 
-    if len(removed) > len(added):
-        for idx in range(len(added), len(removed)):
-            old_s = removed[idx].strip()
-            if not old_s:
-                continue
-            for line_idx, file_line in enumerate(lines):
-                if file_line.strip() == old_s:
-                    lines.pop(line_idx)
-                    modified = True
-                    break
-
-    if len(added) > len(removed):
-        last_match_idx = -1
         if removed:
-            last_old = removed[-1].strip()
-            for line_idx, file_line in enumerate(lines):
-                if file_line.strip() == last_old or (modified and line_idx > 0):
-                    last_match_idx = line_idx
-        if last_match_idx >= 0:
-            indent = lines[last_match_idx][:len(lines[last_match_idx]) - len(lines[last_match_idx].lstrip())]
-            for idx in range(len(removed), len(added)):
-                new_s = added[idx].strip()
-                if new_s:
-                    lines.insert(last_match_idx + 1 + (idx - len(removed)), indent + new_s)
-                    modified = True
+            block_idx = _find_block_in_lines(lines, removed)
+            if block_idx >= 0:
+                indent = lines[block_idx][:len(lines[block_idx]) - len(lines[block_idx].lstrip())]
+                new_lines = [indent + a.strip() for a in added]
+                lines[block_idx:block_idx + len(removed)] = new_lines
+                modified = True
+            else:
+                # Fallback: find individual lines
+                match_idx = -1
+                for r_line in removed:
+                    r_stripped = r_line.strip()
+                    if not r_stripped:
+                        continue
+                    for li, fl in enumerate(lines):
+                        if fl.strip() == r_stripped:
+                            match_idx = li
+                            break
+                    if match_idx >= 0:
+                        break
+                if match_idx >= 0:
+                    indent = lines[match_idx][:len(lines[match_idx]) - len(lines[match_idx].lstrip())]
+                    for r_line in removed:
+                        r_stripped = r_line.strip()
+                        if not r_stripped:
+                            continue
+                        for li, fl in enumerate(lines):
+                            if fl.strip() == r_stripped:
+                                lines.pop(li)
+                                modified = True
+                                break
+                    insert_at = min(match_idx, len(lines))
+                    for ai, a_line in enumerate(added):
+                        lines.insert(insert_at + ai, indent + a_line.strip())
+                        modified = True
+
+        elif added and not removed:
+            context = hunk.get("context_before", [])
+            insert_idx = len(lines)
+            if context:
+                last_ctx = context[-1].strip()
+                for li, fl in enumerate(lines):
+                    if fl.strip() == last_ctx:
+                        insert_idx = li + 1
+                        break
+            indent = ""
+            if insert_idx > 0 and insert_idx <= len(lines):
+                prev = lines[insert_idx - 1]
+                indent = prev[:len(prev) - len(prev.lstrip())]
+            for ai, a_line in enumerate(added):
+                lines.insert(insert_idx + ai, indent + a_line.strip())
+                modified = True
 
     if modified:
         return "\n".join(lines)
@@ -389,11 +451,17 @@ def revert_patch() -> dict:
     applied_diffs = patch_state.get("applied_diffs", [])
     restored_files = set()
 
-    # Reverse each diff: swap removed <-> added
+    # Reverse each diff: swap removed <-> added in each hunk
     for diff in applied_diffs:
+        reversed_hunks = []
+        for hunk in diff.get("hunks", []):
+            reversed_hunks.append({
+                "removed": hunk.get("added", []),
+                "added": hunk.get("removed", []),
+                "context_before": hunk.get("context_before", []),
+            })
         reversed_diff = {
-            "removed": diff.get("added", []),
-            "added": diff.get("removed", []),
+            "hunks": reversed_hunks,
             "target_file": diff.get("target_file"),
         }
         target_file = reversed_diff.get("target_file")

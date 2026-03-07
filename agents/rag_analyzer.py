@@ -158,10 +158,10 @@ async def rag_analyzer_node(state: AgentState):
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
 
     llm = ChatOpenAI(
-        model="qwen/qwen3-235b-a22b-thinking-2507",
+        model="gpt-4o",
         temperature=0,
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("open_router_key"),
+        base_url="https://models.inference.ai.azure.com",
+        api_key=os.getenv("GITHUB_TOKEN"),
     )
 
     analysis_prompt = f"""You are a senior web developer and bug-fixing expert.
@@ -299,10 +299,10 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
 
     # --- 4. LLM with feedback context ---
     llm = ChatOpenAI(
-        model="qwen/qwen3-235b-a22b-thinking-2507",
+        model="gpt-4o",
         temperature=0,
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("open_router_key"),
+        base_url="https://models.inference.ai.azure.com",
+        api_key=os.getenv("GITHUB_TOKEN"),
     )
 
     feedback_prompt = f"""You are a senior web developer and bug-fixing expert.

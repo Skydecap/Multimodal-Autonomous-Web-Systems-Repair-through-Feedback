@@ -29,10 +29,10 @@ async def planner_node(state: AgentState):
     print(f"\n[Planner] Analyzing bug report: '{state['bug_report']}'")
 
     llm = ChatOpenAI(
-        model="qwen/qwen3-235b-a22b-thinking-2507",
+        model="gpt-4o",
         temperature=0,
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("open_router_key"),
+        base_url="https://models.inference.ai.azure.com",
+        api_key=os.getenv("GITHUB_TOKEN"),
     )
 
     server_params = StdioServerParameters(

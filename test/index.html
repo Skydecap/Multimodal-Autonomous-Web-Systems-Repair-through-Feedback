@@ -432,8 +432,9 @@
                 const price = parseFloat(btn.dataset.price);
 
                 let cartData = JSON.parse(localStorage.getItem('cart')) || [];
-                // 💥 TypeError: Cannot read properties of null
+                const newItem = { name: name, price: price, qty: 1 };
 
+                cartData.push(newItem);
                 localStorage.setItem('cart', JSON.stringify(cartData));
                 window.location.href = '';   // never reached
             });
@@ -453,7 +454,7 @@
                 return;
             }
 
-            let config = { apiUrl: '' };
+            let config = { apiUrl: 'http://127.0.0.1:5000' };
             const endpoint = config.apiUrl + '/subscribe';  // 💥 TypeError: Cannot read properties of undefined
 
             statusEl.style.color = '#4caf50';

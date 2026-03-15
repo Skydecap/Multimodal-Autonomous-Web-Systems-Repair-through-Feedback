@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, ToolMessage
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from dotenv import load_dotenv
 from core.state import AgentState
 
 MAX_TURNS = 15  # Safety limit for the agentic loop
@@ -19,6 +20,11 @@ def format_mcp_tool(mcp_tool):
     }
 
 
+def _resolve_llm_api_key() -> str | None:
+    load_dotenv(override=False)
+    return os.getenv("OPENAI_API_KEY") or os.getenv("GITHUB_TOKEN")
+
+
 async def planner_node(state: AgentState):
     """
     Multi-turn MCP agentic loop.
@@ -30,11 +36,31 @@ async def planner_node(state: AgentState):
     print(f"\n[Planner] Analyzing bug report: '{state['bug_report']}'")
     print(f"[Planner] Target URL: {target_url}")
 
+    api_key = _resolve_llm_api_key()
+    if not api_key:
+        error_msg = (
+            "Missing API key. Set OPENAI_API_KEY (recommended) or GITHUB_TOKEN in your environment/.env."
+        )
+        print(f"[Planner] {error_msg}")
+        return {
+            "reproduction_script": "[]",
+            "trace_summary": {
+                "failed_network_requests": [],
+                "console_errors": [{"type": "error", "text": error_msg}],
+                "final_screenshot": "",
+                "action_log": "[]",
+                "agent_summary": f"Could not run planner: {error_msg}",
+            },
+            "screenshots": [],
+            "console_logs": "[]",
+            "iteration_count": state.get("iteration_count", 0) + 1,
+        }
+
     llm = ChatOpenAI(
         model="gpt-4o",
         temperature=0,
         base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+        api_key=api_key,
     )
 
     server_params = StdioServerParameters(

@@ -8,6 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
+from dotenv import load_dotenv
 from core.state import AgentState
 
 # File extensions to index from the website source
@@ -16,6 +17,11 @@ SOURCE_EXTENSIONS = {".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".vue", ".sv
 # Persistent FAISS index directory for cached source embeddings
 FAISS_INDEX_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts", "faiss_source_index")
 FAISS_HASH_FILE = os.path.join(FAISS_INDEX_DIR, "source_hash.txt")
+
+
+def _resolve_llm_api_key() -> str | None:
+    load_dotenv(override=False)
+    return os.getenv("OPENAI_API_KEY") or os.getenv("GITHUB_TOKEN")
 
 
 def _load_website_sources(source_dir: str) -> list[Document]:
@@ -160,6 +166,14 @@ async def rag_analyzer_node(state: AgentState):
     print(f"[RAG Analyzer] Starting RAG-based root cause analysis...")
     print(f"{'='*60}")
 
+    api_key = _resolve_llm_api_key()
+    if not api_key:
+        return {
+            "root_cause_analysis": (
+                "Missing API key. Set OPENAI_API_KEY (recommended) or GITHUB_TOKEN in your environment/.env."
+            )
+        }
+
     trace_summary = state.get("trace_summary", {})
     bug_report = state.get("bug_report", "")
 
@@ -221,7 +235,7 @@ async def rag_analyzer_node(state: AgentState):
         model="gpt-4o",
         temperature=0,
         base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+        api_key=api_key,
     )
 
     analysis_prompt = f"""You are a senior web developer and bug-fixing expert.
@@ -316,6 +330,10 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
     print(f"[RAG Re-analyzer] Feedback: {feedback}")
     print(f"{'='*60}")
 
+    api_key = _resolve_llm_api_key()
+    if not api_key:
+        return "Missing API key. Set OPENAI_API_KEY (recommended) or GITHUB_TOKEN in your environment/.env."
+
     trace_summary = state.get("trace_summary", {})
     bug_report = state.get("bug_report", "")
     previous_analysis = state.get("root_cause_analysis", "")
@@ -370,7 +388,7 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
         model="gpt-4o",
         temperature=0,
         base_url="https://models.inference.ai.azure.com",
-        api_key=os.getenv("GITHUB_TOKEN"),
+        api_key=api_key,
     )
 
     feedback_prompt = f"""You are a senior web developer and bug-fixing expert.

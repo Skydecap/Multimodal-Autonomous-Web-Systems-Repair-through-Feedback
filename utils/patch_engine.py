@@ -11,9 +11,13 @@ from datetime import datetime
 PATCH_STATE_FILE = "artifacts/patch_state.json"
 
 
-def _get_source_dir():
+def _get_source_dir(source_dir: str | None = None):
     """Get the test/ source directory."""
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "test")
+    if source_dir:
+        if os.path.isabs(source_dir):
+            return source_dir
+        return os.path.abspath(source_dir)
+    return os.path.abspath("test")
 
 
 def _load_patch_state() -> dict:
@@ -221,7 +225,7 @@ def _apply_diff_to_file(filepath: str, diff: dict) -> bool:
     return modified
 
 
-def apply_patch(analysis: str) -> dict:
+def apply_patch(analysis: str, source_dir: str | None = None) -> dict:
     """
     Parse diffs from RAG analysis and apply them to the source files.
     Stores the applied diffs so they can be reversed to revert.
@@ -231,7 +235,7 @@ def apply_patch(analysis: str) -> dict:
     if patch_state.get("applied"):
         return {"status": "error", "error": "Patch already applied. Revert first."}
 
-    source_dir = _get_source_dir()
+    source_dir = _get_source_dir(source_dir)
     diffs = parse_diffs_from_analysis(analysis)
 
     if not diffs:
@@ -383,12 +387,12 @@ def _apply_diff_in_memory(content: str, diff: dict) -> str | None:
     return None
 
 
-def preview_patch(analysis: str) -> dict:
+def preview_patch(analysis: str, source_dir: str | None = None) -> dict:
     """
     Parse diffs from RAG analysis and apply them in memory without modifying files.
     Returns {status, previews: {relative_path: patched_content}, files_modified}.
     """
-    source_dir = _get_source_dir()
+    source_dir = _get_source_dir(source_dir)
     diffs = parse_diffs_from_analysis(analysis)
 
     if not diffs:
@@ -441,13 +445,13 @@ def preview_patch(analysis: str) -> dict:
     }
 
 
-def revert_patch() -> dict:
+def revert_patch(source_dir: str | None = None) -> dict:
     """Revert applied patch by reversing the stored diffs (swap removed/added)."""
     patch_state = _load_patch_state()
     if not patch_state.get("applied"):
         return {"status": "error", "error": "No patch to revert."}
 
-    source_dir = _get_source_dir()
+    source_dir = _get_source_dir(source_dir)
     applied_diffs = patch_state.get("applied_diffs", [])
     restored_files = set()
 

@@ -22,3 +22,7 @@ class AgentState(TypedDict):
     iteration_count: int
     test_results: str 
     human_feedback: Optional[str]
+
+    # Runtime configuration
+    target_url: Optional[str]
+    source_dir: Optional[str]

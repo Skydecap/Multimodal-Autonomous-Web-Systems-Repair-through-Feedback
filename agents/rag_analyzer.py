@@ -1,6 +1,7 @@
 import os
 import json
 import glob
+import hashlib
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -11,6 +12,10 @@ from core.state import AgentState
 
 # File extensions to index from the website source
 SOURCE_EXTENSIONS = {".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".php", ".py"}
+
+# Persistent FAISS index directory for cached source embeddings
+FAISS_INDEX_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts", "faiss_source_index")
+FAISS_HASH_FILE = os.path.join(FAISS_INDEX_DIR, "source_hash.txt")
 
 
 def _load_website_sources(source_dir: str) -> list[Document]:
@@ -32,6 +37,56 @@ def _load_website_sources(source_dir: str) -> list[Document]:
             except Exception as e:
                 print(f"  [RAG] Could not read {filepath}: {e}")
     return documents
+
+
+def _compute_source_hash(source_docs: list[Document]) -> str:
+    """Compute a SHA-256 hash of all source document contents to detect changes."""
+    hasher = hashlib.sha256()
+    for doc in sorted(source_docs, key=lambda d: d.metadata.get("source", "")):
+        hasher.update(doc.page_content.encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def _get_or_build_source_vectorstore(source_dir: str, embeddings, splitter) -> tuple[FAISS | None, list[Document]]:
+    """
+    Load cached FAISS index for source files from disk, or build and save it.
+    Returns (vectorstore, source_docs). vectorstore is None if no source files exist.
+    """
+    source_docs = _load_website_sources(source_dir)
+    print(f"[RAG] Loaded {len(source_docs)} source file(s) from '{source_dir}'")
+
+    if not source_docs:
+        return None, source_docs
+
+    current_hash = _compute_source_hash(source_docs)
+
+    # Check if cached index exists and is up-to-date
+    if os.path.exists(FAISS_INDEX_DIR) and os.path.exists(FAISS_HASH_FILE):
+        with open(FAISS_HASH_FILE, "r") as f:
+            stored_hash = f.read().strip()
+        if stored_hash == current_hash:
+            print(f"[RAG] Source files unchanged — loading cached FAISS index from '{FAISS_INDEX_DIR}'")
+            vectorstore = FAISS.load_local(FAISS_INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
+            return vectorstore, source_docs
+        else:
+            print(f"[RAG] Source files changed — rebuilding FAISS index...")
+    else:
+        print(f"[RAG] No cached FAISS index found — building for the first time...")
+
+    # Build fresh index from source files
+    chunks = splitter.split_documents(source_docs)
+    print(f"[RAG] Split source files into {len(chunks)} chunks")
+
+    vectorstore = FAISS.from_documents(chunks, embeddings)
+
+    # Save to disk
+    os.makedirs(FAISS_INDEX_DIR, exist_ok=True)
+    vectorstore.save_local(FAISS_INDEX_DIR)
+    with open(FAISS_HASH_FILE, "w") as f:
+        f.write(current_hash)
+    print(f"[RAG] FAISS index saved to '{FAISS_INDEX_DIR}'")
+
+    return vectorstore, source_docs
 
 
 def _build_trace_documents(trace_summary: dict, bug_report: str) -> list[Document]:
@@ -107,38 +162,42 @@ async def rag_analyzer_node(state: AgentState):
     trace_summary = state.get("trace_summary", {})
     bug_report = state.get("bug_report", "")
 
-    # --- 1. Collect documents ---
-
-    # Website source files
-    source_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "test")
-    source_docs = _load_website_sources(source_dir)
-    print(f"[RAG] Loaded {len(source_docs)} source file(s) from '{source_dir}'")
-
-    # Trace artifacts
-    trace_docs = _build_trace_documents(trace_summary, bug_report)
-    print(f"[RAG] Created {len(trace_docs)} trace document(s)")
-
-    all_docs = source_docs + trace_docs
-
-    if not all_docs:
-        print("[RAG] No documents to index. Skipping analysis.")
-        return {"root_cause_analysis": "No documents available for analysis."}
-
-    # --- 2. Chunk and index ---
+    # --- 1. Setup embedding model and text splitter ---
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+    )
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1500,
         chunk_overlap=200,
         separators=["\n### ", "\n## ", "\n\n", "\n", " "],
     )
-    chunks = splitter.split_documents(all_docs)
-    print(f"[RAG] Split into {len(chunks)} chunks")
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2",
-    )
+    # --- 2. Load or build cached source file index ---
+    configured_source_dir = state.get("source_dir") or os.getenv("MAWSR_SOURCE_DIR", "test")
+    source_dir = configured_source_dir if os.path.isabs(configured_source_dir) else os.path.abspath(configured_source_dir)
+    source_vectorstore, source_docs = _get_or_build_source_vectorstore(source_dir, embeddings, splitter)
 
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    print(f"[RAG] FAISS vector store built successfully")
+    # --- 3. Build trace documents (always fresh per run) ---
+    trace_docs = _build_trace_documents(trace_summary, bug_report)
+    print(f"[RAG] Created {len(trace_docs)} trace document(s)")
+
+    if source_vectorstore is None and not trace_docs:
+        print("[RAG] No documents to index. Skipping analysis.")
+        return {"root_cause_analysis": "No documents available for analysis."}
+
+    # --- 4. Merge trace chunks into the vectorstore (in-memory only) ---
+    if trace_docs:
+        trace_chunks = splitter.split_documents(trace_docs)
+        print(f"[RAG] Split trace data into {len(trace_chunks)} chunks")
+        if source_vectorstore:
+            source_vectorstore.add_documents(trace_chunks)
+            vectorstore = source_vectorstore
+        else:
+            vectorstore = FAISS.from_documents(trace_chunks, embeddings)
+    else:
+        vectorstore = source_vectorstore
+
+    print(f"[RAG] FAISS vector store ready")
 
     # --- 3. Retrieve relevant context ---
     # Build a rich query combining bug report + errors
@@ -260,28 +319,36 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
     bug_report = state.get("bug_report", "")
     previous_analysis = state.get("root_cause_analysis", "")
 
-    # --- 1. Collect documents (same as before) ---
-    source_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "test")
-    source_docs = _load_website_sources(source_dir)
-    trace_docs = _build_trace_documents(trace_summary, bug_report)
-    all_docs = source_docs + trace_docs
-
-    if not all_docs:
-        return "No documents available for re-analysis."
-
-    # --- 2. Chunk and index ---
+    # --- 1. Setup embedding model and text splitter ---
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+    )
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1500,
         chunk_overlap=200,
         separators=["\n### ", "\n## ", "\n\n", "\n", " "],
     )
-    chunks = splitter.split_documents(all_docs)
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2",
-    )
+    # --- 2. Load or build cached source file index ---
+    configured_source_dir = state.get("source_dir") or os.getenv("MAWSR_SOURCE_DIR", "test")
+    source_dir = configured_source_dir if os.path.isabs(configured_source_dir) else os.path.abspath(configured_source_dir)
+    source_vectorstore, source_docs = _get_or_build_source_vectorstore(source_dir, embeddings, splitter)
 
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    trace_docs = _build_trace_documents(trace_summary, bug_report)
+
+    if source_vectorstore is None and not trace_docs:
+        return "No documents available for re-analysis."
+
+    # Merge trace chunks into the vectorstore (in-memory only)
+    if trace_docs:
+        trace_chunks = splitter.split_documents(trace_docs)
+        if source_vectorstore:
+            source_vectorstore.add_documents(trace_chunks)
+            vectorstore = source_vectorstore
+        else:
+            vectorstore = FAISS.from_documents(trace_chunks, embeddings)
+    else:
+        vectorstore = source_vectorstore
 
     # --- 3. Retrieve with feedback-enriched query ---
     console_errors = trace_summary.get("console_errors", [])
@@ -375,7 +442,7 @@ Format your response as:
     print(analysis)
     print(f"{'='*60}")
 
-    # Save updated analysis
+
     os.makedirs("artifacts", exist_ok=True)
     with open("artifacts/rag_analysis.md", "w", encoding="utf-8") as f:
         f.write(analysis)

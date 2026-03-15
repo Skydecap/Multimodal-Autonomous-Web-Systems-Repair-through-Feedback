@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAWSR Dashboard</title>
+    <style>
+        :root {
+            --bg: #f6f8fb;
+            --panel: #ffffff;
+            --ink: #11243a;
+            --muted: #5c6b7a;
+            --brand: #0b8f7a;
+            --brand-2: #0a5c8f;
+            --danger: #d14343;
+            --ring: rgba(11, 143, 122, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 5% 5%, #dff5ef 0%, transparent 30%),
+                radial-gradient(circle at 95% 0%, #dcefff 0%, transparent 35%),
+                var(--bg);
+            min-height: 100vh;
+        }
+
+        .shell {
+            max-width: 1100px;
+            margin: 24px auto;
+            padding: 0 16px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--panel);
+            border-radius: 16px;
+            box-shadow: 0 10px 35px rgba(17, 36, 58, 0.08);
+            padding: 16px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 1.5rem;
+        }
+
+        h2 {
+            margin: 0 0 10px;
+            font-size: 1rem;
+        }
+
+        p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        textarea,
+        input {
+            width: 100%;
+            border: 1px solid #d4dde8;
+            border-radius: 10px;
+            padding: 10px;
+            font: inherit;
+            outline: none;
+            transition: box-shadow 0.2s ease;
+        }
+
+        textarea:focus,
+        input:focus {
+            box-shadow: 0 0 0 4px var(--ring);
+            border-color: var(--brand);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        button {
+            border: none;
+            border-radius: 999px;
+            padding: 10px 16px;
+            color: #fff;
+            background: linear-gradient(135deg, var(--brand), var(--brand-2));
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            background: #58697d;
+        }
+
+        button.danger {
+            background: var(--danger);
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #0f1f33;
+            color: #e9f2ff;
+            border-radius: 10px;
+            padding: 12px;
+            max-height: 360px;
+            overflow: auto;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .status {
+            font-weight: 700;
+            color: var(--brand-2);
+        }
+    </style>
+</head>
+
+<body>
+    <main class="shell">
+        <section class="card">
+            <h1>MAWSR Dashboard</h1>
+            <p>Submit bug reports from any website and inspect analysis and patch workflow.</p>
+        </section>
+
+        <section class="card">
+            <h2>Run Analysis</h2>
+            <div class="grid">
+                <div>
+                    <label for="bug_report">Bug report</label>
+                    <textarea id="bug_report" rows="5"
+                        placeholder="Example: Checkout button does not submit order."></textarea>
+                </div>
+                <div>
+                    <label for="target_url">Target URL</label>
+                    <input id="target_url" placeholder="https://your-site.example.com" />
+                    <div style="height:10px"></div>
+                    <label for="source_dir">Source directory</label>
+                    <input id="source_dir" placeholder="/path/to/source" />
+                    <div class="actions">
+                        <button id="runBtn">Run Workflow</button>
+                        <button class="secondary" id="refreshBtn">Refresh Analysis</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Patch Controls</h2>
+            <div class="actions">
+                <button id="previewBtn">Preview Patch</button>
+                <button id="pushBtn">Push Patch</button>
+                <button class="danger" id="revertBtn">Revert Patch</button>
+            </div>
+            <p style="margin-top:8px">Status: <span id="status" class="status">Idle</span></p>
+        </section>
+
+        <section class="card">
+            <h2>Analysis Output</h2>
+            <pre id="analysis">No analysis yet.</pre>
+        </section>
+    </main>
+
+    <script>
+        const statusEl = document.getElementById("status");
+        const analysisEl = document.getElementById("analysis");
+
+        const setStatus = (text) => { statusEl.textContent = text; };
+
+        async function callApi(path, options = {}) {
+            const response = await fetch(path, {
+                headers: { "Content-Type": "application/json" },
+                ...options,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error || data.message || `Request failed: ${response.status}`);
+            }
+            return data;
+        }
+
+        async function refreshAnalysis() {
+            setStatus("Loading latest analysis...");
+            const data = await callApi("/review/analysis");
+            analysisEl.textContent = data.analysis || "No analysis available.";
+            setStatus(data.patch_applied ? "Patch applied" : "Patch not applied");
+        }
+
+        document.getElementById("runBtn").addEventListener("click", async () => {
+            try {
+                setStatus("Running workflow...");
+                const payload = {
+                    bug_report: document.getElementById("bug_report").value.trim(),
+                    target_url: document.getElementById("target_url").value.trim(),
+                    source_dir: document.getElementById("source_dir").value.trim(),
+                };
+                const data = await callApi("/report", { method: "POST", body: JSON.stringify(payload) });
+                analysisEl.textContent = data.root_cause_analysis || "No analysis returned.";
+                setStatus("Workflow completed");
+            } catch (err) {
+                setStatus(`Error: ${err.message}`);
+            }
+        });
+
+        document.getElementById("refreshBtn").addEventListener("click", async () => {
+            try { await refreshAnalysis(); } catch (err) { setStatus(`Error: ${err.message}`); }
+        });
+
+        document.getElementById("previewBtn").addEventListener("click", async () => {
+            try {
+                setStatus("Generating preview...");
+                const data = await callApi("/review/apply", { method: "POST" });
+                setStatus(`Preview ready: ${data.files_modified} file(s)`);
+            } catch (err) {
+                setStatus(`Error: ${err.message}`);
+            }
+        });
+
+        document.getElementById("pushBtn").addEventListener("click", async () => {
+            try {
+                setStatus("Applying patch...");
+                const data = await callApi("/review/push", { method: "POST" });
+                setStatus(`Patch applied to ${data.files_modified} file(s)`);
+            } catch (err) {
+                setStatus(`Error: ${err.message}`);
+            }
+        });
+
+        document.getElementById("revertBtn").addEventListener("click", async () => {
+            try {
+                setStatus("Reverting patch...");
+                await callApi("/review/revert", { method: "POST" });
+                setStatus("Patch reverted");
+            } catch (err) {
+                setStatus(`Error: ${err.message}`);
+            }
+        });
+
+        refreshAnalysis().catch(() => setStatus("Ready"));
+    </script>
+</body>
+
+</html>

@@ -224,12 +224,14 @@ class TestExecutorToRAG:
             captured_chunks.extend(chunks)
             mock_vs = MagicMock()
             mock_vs.similarity_search.return_value = chunks[:3]
+            mock_vs.add_documents = lambda docs: captured_chunks.extend(docs)
             return mock_vs
 
         with patch("agents.rag_analyzer.ChatOpenAI", return_value=mock_llm), \
              patch("agents.rag_analyzer.HuggingFaceEmbeddings"), \
              patch("agents.rag_analyzer.FAISS") as mock_faiss:
             mock_faiss.from_documents.side_effect = fake_from_docs
+            mock_faiss.load_local.return_value = None  # force rebuild
             result = await rag_analyzer_node(state)
 
         # Verify trace artifacts were indexed

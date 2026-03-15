@@ -26,7 +26,9 @@ async def planner_node(state: AgentState):
     collects console/network errors — all through the Playwright MCP server.
     Works generically on any website.
     """
+    target_url = state.get("target_url") or os.getenv("MAWSR_TARGET_URL", "http://127.0.0.1:3000")
     print(f"\n[Planner] Analyzing bug report: '{state['bug_report']}'")
+    print(f"[Planner] Target URL: {target_url}")
 
     llm = ChatOpenAI(
         model="gpt-4o",
@@ -71,7 +73,7 @@ async def planner_node(state: AgentState):
                     "Call ONE tool at a time. Wait for the result before deciding the next step.\n"
                     "Be thorough — click buttons, check console, check network.\n\n"
                     f"Bug report: \"{state['bug_report']}\"\n"
-                    f"Target URL: http://127.0.0.1:3000\n"
+                    f"Target URL: {target_url}\n"
                 )
 
                 messages = [HumanMessage(content=system_prompt)]

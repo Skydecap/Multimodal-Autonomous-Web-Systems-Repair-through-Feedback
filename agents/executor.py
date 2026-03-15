@@ -13,6 +13,7 @@ async def browser_execution_node(state: AgentState):
     network_errors = trace_summary.get("failed_network_requests", [])
     console_errors = trace_summary.get("console_errors", [])
 
+    print(f"\n[MAWSR] Step 2/3 — Executor (Playwright trace replay)")
     print(f"\n[Executor] MCP detected {len(network_errors)} network error(s), "
           f"{len(console_errors)} console error(s).")
 

@@ -13,7 +13,7 @@
         }
 
         body {
-            font-family: "Segoe UI", Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             background: #1a1a2e;
             color: #e0e0e0;
             min-height: 100vh;
@@ -59,7 +59,7 @@
             padding: 20px;
         }
 
-
+        /* Before/After Preview */
         .preview-section {
             margin-bottom: 20px;
         }
@@ -73,7 +73,7 @@
         .preview-container {
             display: flex;
             gap: 15px;
-            height: 420px;
+            height: 400px;
         }
 
         .preview-panel {
@@ -102,9 +102,10 @@
             width: 100%;
             height: 100%;
             border: none;
-            background: #fff;
+            background: white;
         }
 
+        /* Analysis Section */
         .analysis-section {
             background: #16213e;
             border-radius: 8px;
@@ -123,10 +124,10 @@
             background: #0a0a23;
             padding: 15px;
             border-radius: 6px;
-            font-family: "Consolas", "Courier New", monospace;
+            font-family: 'Consolas', 'Courier New', monospace;
             font-size: 13px;
             line-height: 1.6;
-            max-height: 420px;
+            max-height: 400px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-wrap: break-word;
@@ -148,6 +149,7 @@
             background: rgba(244, 67, 54, 0.1);
         }
 
+        /* Action Buttons */
         .actions-section {
             display: flex;
             gap: 12px;
@@ -164,7 +166,6 @@
             font-weight: bold;
             cursor: pointer;
             transition: all 0.2s;
-            color: #fff;
         }
 
         .btn:disabled {
@@ -174,6 +175,7 @@
 
         .btn-apply {
             background: #4caf50;
+            color: white;
         }
 
         .btn-apply:hover:not(:disabled) {
@@ -182,6 +184,7 @@
 
         .btn-revert {
             background: #f44336;
+            color: white;
         }
 
         .btn-revert:hover:not(:disabled) {
@@ -190,6 +193,7 @@
 
         .btn-push {
             background: #2196f3;
+            color: white;
         }
 
         .btn-push:hover:not(:disabled) {
@@ -198,12 +202,14 @@
 
         .btn-refresh {
             background: #ff9800;
+            color: white;
         }
 
         .btn-refresh:hover:not(:disabled) {
             background: #e65100;
         }
 
+        /* Feedback Section */
         .feedback-section {
             background: #16213e;
             border-radius: 8px;
@@ -226,9 +232,13 @@
             border-radius: 6px;
             background: #0a0a23;
             color: #e0e0e0;
-            font-family: "Segoe UI", Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             font-size: 14px;
             resize: vertical;
+        }
+
+        .feedback-section textarea::placeholder {
+            color: #666;
         }
 
         .feedback-actions {
@@ -239,12 +249,14 @@
 
         .btn-feedback {
             background: #9c27b0;
+            color: white;
         }
 
         .btn-feedback:hover:not(:disabled) {
             background: #6a1b9a;
         }
 
+        /* Status Messages */
         .status-msg {
             padding: 10px 16px;
             border-radius: 6px;
@@ -281,6 +293,7 @@
             color: #ffe0b2;
         }
 
+        /* Iteration History */
         .history-section {
             background: #16213e;
             border-radius: 8px;
@@ -337,55 +350,55 @@
 
 <body>
     <div class="header">
-        <h1>Human-in-the-Loop Review Dashboard</h1>
+        <h1>🔍 Human-in-the-Loop Review Dashboard</h1>
         <span id="patch-status" class="status-badge status-pending">Pending Review</span>
     </div>
 
     <div class="main-content">
         <div id="status-msg" class="status-msg"></div>
 
-        <div class="actions-section">
-            <button class="btn btn-refresh" onclick="loadAnalysis()">Refresh Analysis</button>
-        </div>
-
+        <!-- Before / After Preview -->
         <div class="preview-section">
-            <h2>Live Preview: Before and After</h2>
+            <h2>📺 Live Preview — Before & After</h2>
             <div class="preview-container">
                 <div class="preview-panel">
-                    <div class="panel-label">BEFORE (Original Site)</div>
-                    <iframe id="iframe-before"></iframe>
+                    <div class="panel-label">BEFORE (Original)</div>
+                    <iframe id="iframe-before" src="http://127.0.0.1:3000"></iframe>
                 </div>
                 <div class="preview-panel">
-                    <div class="panel-label">AFTER (Preview Patch)</div>
-                    <iframe id="iframe-after"></iframe>
+                    <div class="panel-label">AFTER (Patched)</div>
+                    <iframe id="iframe-after" src="http://127.0.0.1:3000"></iframe>
                 </div>
             </div>
         </div>
 
+        <!-- Action Buttons -->
         <div class="actions-section">
-            <button id="btn-apply" class="btn btn-apply" onclick="applyPatch()">Apply Patch (Preview Only)</button>
-            <button id="btn-revert" class="btn btn-revert" onclick="clearPreview()" disabled>Clear Preview</button>
-            <button id="btn-push" class="btn btn-push" onclick="pushPatch()" disabled>Push Patch</button>
-            <button id="btn-refresh-preview" class="btn btn-refresh" onclick="refreshPreviews()">Refresh
-                Previews</button>
+            <button id="btn-apply" class="btn btn-apply" onclick="applyPatch()">✅ Apply Patch</button>
+            <button id="btn-revert" class="btn btn-revert" onclick="revertPatch()" disabled>↩️ Revert</button>
+            <button id="btn-push" class="btn btn-push" onclick="pushCode()" disabled>🚀 Apply to Files</button>
+            <button id="btn-refresh" class="btn btn-refresh" onclick="refreshPreviews()">🔄 Refresh Previews</button>
         </div>
 
+        <!-- RAG Analysis -->
         <div class="analysis-section">
-            <h2>RAG Analysis and Suggested Fix</h2>
+            <h2>🧠 RAG Analysis & Suggested Fix</h2>
             <div id="analysis-content" class="analysis-content">Loading analysis...</div>
         </div>
 
+        <!-- Feedback Section -->
         <div class="feedback-section">
-            <h2>Feedback for Re-analysis</h2>
+            <h2>💬 Not Satisfied? Provide Feedback</h2>
             <textarea id="feedback-text"
-                placeholder="Describe what should be changed in the suggested patch..."></textarea>
+                placeholder="Describe what's wrong with the suggested fix, what should change, or additional context..."></textarea>
             <div class="feedback-actions">
-                <button class="btn btn-feedback" onclick="submitFeedback()">Re-analyze with Feedback</button>
+                <button class="btn btn-feedback" onclick="submitFeedback()">🔁 Re-analyze with Feedback</button>
             </div>
         </div>
 
+        <!-- Iteration History -->
         <div class="history-section">
-            <h2>Iteration History</h2>
+            <h2>📜 Iteration History</h2>
             <div id="history-list">
                 <div class="history-item" style="color: #666;">No iterations yet.</div>
             </div>
@@ -393,235 +406,195 @@
     </div>
 
     <script>
-        let targetUrl = "http://127.0.0.1:3000";
-        let previewApplied = false;
-        let patchPushed = false;
+        const API = 'http://127.0.0.1:5000';
+        let patchApplied = false;
         let iterations = [];
-        let previewFilename = null;
-        let pollTimer = null;
 
-        window.addEventListener("DOMContentLoaded", () => {
-            loadAnalysis();
-            startPolling();
-        });
-
-        function startPolling() {
-            // Poll every 5 seconds until analysis is available
-            pollTimer = setInterval(async () => {
-                try {
-                    const data = await fetch("/review/analysis").then(r => r.json());
-                    if (data.analysis) {
-                        clearInterval(pollTimer);
-                        pollTimer = null;
-                        loadAnalysis();
-                    }
-                } catch (_) { /* ignore poll errors */ }
-            }, 5000);
-        }
-
-        async function api(path, options = {}) {
-            const response = await fetch(path, options);
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                throw new Error(data.error || `Request failed (${response.status})`);
-            }
-            return data;
-        }
+        window.addEventListener('DOMContentLoaded', loadAnalysis);
 
         async function loadAnalysis() {
             try {
-                const data = await api("/review/analysis");
+                const res = await fetch(`${API}/review/analysis`);
+                const data = await res.json();
                 if (data.analysis) {
-                    document.getElementById("analysis-content").innerHTML = formatMarkdown(data.analysis);
-                    // Stop polling once we have analysis
-                    if (pollTimer) {
-                        clearInterval(pollTimer);
-                        pollTimer = null;
-                    }
+                    document.getElementById('analysis-content').innerHTML = formatMarkdown(data.analysis);
                 } else {
-                    document.getElementById("analysis-content").textContent =
-                        "No analysis available yet. Submit a bug report from your web application — this page will auto-refresh when results are ready.";
+                    document.getElementById('analysis-content').textContent =
+                        'No analysis available. Run the workflow first via the product page.';
                 }
-
-                targetUrl = data.target_url || targetUrl;
-                patchPushed = !!data.patch_applied;
-                iterations = data.iterations || [];
-
-                updatePatchStatus(patchPushed ? "applied" : (previewApplied ? "applied" : "pending"));
-                renderHistory();
-                refreshPreviews();
+                if (data.iterations) {
+                    iterations = data.iterations;
+                    renderHistory();
+                }
+                if (data.patch_applied) {
+                    patchApplied = true;
+                    updatePatchStatus('applied');
+                }
             } catch (err) {
-                document.getElementById("analysis-content").textContent =
-                    "Could not load analysis. Make sure the mawsr-dashboard server is running.";
-                showStatus("error", `Could not load analysis: ${err.message}`);
+                document.getElementById('analysis-content').textContent =
+                    'Could not connect to server. Is it running on port 5000?';
             }
         }
 
         async function applyPatch() {
-            showStatus("loading", '<span class="spinner"></span> Generating preview patch...');
+            showStatus('loading', '<span class="spinner"></span> Generating preview...');
             disableButtons(true);
             try {
-                const data = await api("/review/apply", { method: "POST" });
-                previewApplied = true;
-                patchPushed = false;
-                const files = Array.isArray(data.files) ? data.files : [];
-                previewFilename = files.find(f => f.toLowerCase().endsWith(".html")) || files[0] || null;
-                updatePatchStatus("applied");
-                document.getElementById("btn-revert").disabled = false;
-                document.getElementById("btn-push").disabled = false;
-                if (previewFilename) {
-                    document.getElementById("iframe-after").src = `/review/preview/${encodeURIComponent(previewFilename)}?t=${Date.now()}`;
+                const res = await fetch(`${API}/review/apply`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    patchApplied = true;
+                    updatePatchStatus('applied');
+                    showStatus('success', `✅ Preview ready! ${data.files_modified} file(s) patched (preview only — files not changed).`);
+                    document.getElementById('btn-revert').disabled = false;
+                    document.getElementById('btn-push').disabled = false;
+                    setTimeout(() => {
+                        document.getElementById('iframe-after').src = `${API}/review/preview/index.html?` + Date.now();
+                    }, 500);
                 } else {
-                    document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+                    showStatus('error', `❌ ${data.error || 'Failed to generate preview'}`);
                 }
-                showStatus("success", `Preview ready for ${data.files_modified} file(s). Source files are NOT changed until you click Push Patch.`);
             } catch (err) {
-                showStatus("error", `Failed to preview patch: ${err.message}`);
+                showStatus('error', '❌ Could not connect to server.');
             }
             disableButtons(false);
         }
 
-        function clearPreview() {
-            previewApplied = false;
-            previewFilename = null;
-            if (!patchPushed) {
-                updatePatchStatus("pending");
-            }
-            document.getElementById("btn-revert").disabled = true;
-            document.getElementById("btn-push").disabled = true;
-            document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
-            showStatus("info", "Preview cleared. Source files are still unchanged.");
+        async function revertPatch() {
+            patchApplied = false;
+            updatePatchStatus('reverted');
+            showStatus('success', '↩️ Preview cleared. Files were not modified.');
+            document.getElementById('btn-revert').disabled = true;
+            document.getElementById('btn-push').disabled = true;
+            document.getElementById('iframe-after').src = 'http://127.0.0.1:3000?' + Date.now();
         }
 
-        async function pushPatch() {
-            if (!previewApplied && !patchPushed) {
-                showStatus("error", "Preview patch first before pushing changes.");
-                return;
-            }
-
-            if (!confirm("Push patch to source files? This will modify files in source_dir.")) {
-                return;
-            }
-
-            showStatus("loading", '<span class="spinner"></span> Applying patch to source files...');
+        async function pushCode() {
+            if (!confirm('Apply the patched code to the actual source files?')) return;
+            showStatus('loading', '<span class="spinner"></span> Applying changes to files...');
             disableButtons(true);
             try {
-                const data = await api("/review/push", { method: "POST" });
-                patchPushed = true;
-                updatePatchStatus("applied");
-                showStatus("success", `Patch pushed to ${data.files_modified} file(s).`);
-                refreshPreviews();
+                const res = await fetch(`${API}/review/push`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    showStatus('success', `🚀 Changes applied to ${data.files_modified} file(s)!`);
+                    setTimeout(() => {
+                        document.getElementById('iframe-before').src = 'http://127.0.0.1:3000?' + Date.now();
+                        document.getElementById('iframe-after').src = 'http://127.0.0.1:3000?' + Date.now();
+                    }, 500);
+                } else {
+                    showStatus('error', `❌ ${data.error || 'Failed to apply changes'}`);
+                }
             } catch (err) {
-                showStatus("error", `Failed to push patch: ${err.message}`);
+                showStatus('error', '❌ Could not connect to server.');
             }
             disableButtons(false);
         }
 
         async function submitFeedback() {
-            const feedback = document.getElementById("feedback-text").value.trim();
+            const feedback = document.getElementById('feedback-text').value.trim();
             if (!feedback) {
-                showStatus("error", "Please enter feedback before re-analysis.");
+                showStatus('error', '⚠️ Please enter your feedback first.');
                 return;
             }
-
-            showStatus("loading", '<span class="spinner"></span> Re-analyzing with feedback...');
+            showStatus('loading', '<span class="spinner"></span> Re-analyzing with your feedback... This may take a minute.');
             disableButtons(true);
             try {
-                const data = await api("/review/feedback", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ feedback }),
+                const res = await fetch(`${API}/review/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feedback })
                 });
-
-                document.getElementById("analysis-content").innerHTML = formatMarkdown(data.analysis || "");
-                document.getElementById("feedback-text").value = "";
-                previewApplied = false;
-                patchPushed = false;
-                updatePatchStatus("pending");
-                if (Array.isArray(data.iterations)) {
-                    iterations = data.iterations;
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    showStatus('success', '🔁 Re-analysis complete! Review the new suggestions below.');
+                    document.getElementById('analysis-content').innerHTML = formatMarkdown(data.analysis);
+                    document.getElementById('feedback-text').value = '';
+                    iterations = data.iterations || iterations;
                     renderHistory();
+                    if (patchApplied) {
+                        await revertPatch();
+                    }
+                    updatePatchStatus('pending');
+                } else {
+                    showStatus('error', `❌ ${data.error || 'Feedback failed'}`);
                 }
-                clearPreview();
-                showStatus("success", "Re-analysis complete. Review updated patch suggestions.");
             } catch (err) {
-                showStatus("error", `Feedback request failed: ${err.message}`);
+                showStatus('error', '❌ Could not connect to server.');
             }
             disableButtons(false);
         }
 
         function refreshPreviews() {
             const ts = Date.now();
-            document.getElementById("iframe-before").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${ts}`;
-            if (previewApplied && previewFilename) {
-                document.getElementById("iframe-after").src = `/review/preview/${encodeURIComponent(previewFilename)}?t=${ts + 1}`;
-            } else {
-                document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${ts + 1}`;
-            }
+            document.getElementById('iframe-before').src = 'http://127.0.0.1:3000?' + ts;
+            document.getElementById('iframe-after').src = 'http://127.0.0.1:3000?' + (ts + 1);
+            showStatus('info', '🔄 Previews refreshed.');
         }
 
-        function showStatus(type, message) {
-            const el = document.getElementById("status-msg");
+        function showStatus(type, html) {
+            const el = document.getElementById('status-msg');
             el.className = `status-msg show ${type}`;
-            el.innerHTML = message;
+            el.innerHTML = html;
         }
 
         function updatePatchStatus(state) {
-            const badge = document.getElementById("patch-status");
-            badge.className = "status-badge";
-            if (state === "applied") {
-                badge.classList.add("status-applied");
-                badge.textContent = "Patch Applied";
-            } else if (state === "reverted") {
-                badge.classList.add("status-reverted");
-                badge.textContent = "Reverted";
+            const badge = document.getElementById('patch-status');
+            badge.className = 'status-badge';
+            if (state === 'applied') {
+                badge.classList.add('status-applied');
+                badge.textContent = 'Patch Applied';
+            } else if (state === 'reverted') {
+                badge.classList.add('status-reverted');
+                badge.textContent = 'Reverted';
             } else {
-                badge.classList.add("status-pending");
-                badge.textContent = "Pending Review";
+                badge.classList.add('status-pending');
+                badge.textContent = 'Pending Review';
             }
         }
 
         function disableButtons(disabled) {
-            document.querySelectorAll(".btn").forEach(btn => {
+            document.querySelectorAll('.btn').forEach(btn => {
+                if (disabled) btn.setAttribute('data-was-disabled', btn.disabled);
                 btn.disabled = disabled;
             });
             if (!disabled) {
-                document.getElementById("btn-revert").disabled = !previewApplied;
-                document.getElementById("btn-push").disabled = !previewApplied;
+                document.getElementById('btn-revert').disabled = !patchApplied;
+                document.getElementById('btn-push').disabled = !patchApplied;
             }
         }
 
         function renderHistory() {
-            const list = document.getElementById("history-list");
+            const list = document.getElementById('history-list');
             if (!iterations.length) {
                 list.innerHTML = '<div class="history-item" style="color: #666;">No iterations yet.</div>';
                 return;
             }
             list.innerHTML = iterations.map((it, i) => `
                 <div class="history-item">
-                    <div><span class="iter-label">Iteration ${i + 1}</span> - ${it.timestamp || ""}</div>
-                    ${it.feedback ? `<div class="iter-feedback">Feedback: "${it.feedback}"</div>` : ""}
+                    <div><span class="iter-label">Iteration ${i + 1}</span> — ${it.timestamp || ''}</div>
+                    ${it.feedback ? `<div class="iter-feedback">Feedback: "${it.feedback}"</div>` : ''}
                 </div>
-            `).join("");
+            `).join('');
         }
 
         function formatMarkdown(text) {
             return text
-                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
                 .replace(/^### (.+)$/gm, '<h3 style="color:#ff9800;font-size:14px;margin-top:12px;">$1</h3>')
                 .replace(/```diff\n([\s\S]*?)```/g, (m, code) => {
-                    const highlighted = code.split("\n").map(line => {
-                        if (line.startsWith("+")) return `<span class="diff-add">${line}</span>`;
-                        if (line.startsWith("-")) return `<span class="diff-remove">${line}</span>`;
+                    const highlighted = code.split('\n').map(line => {
+                        if (line.startsWith('+')) return `<span class="diff-add">${line}</span>`;
+                        if (line.startsWith('-')) return `<span class="diff-remove">${line}</span>`;
                         return line;
-                    }).join("\n");
+                    }).join('\n');
                     return `<pre style="background:#111;padding:10px;border-radius:4px;margin:8px 0;">${highlighted}</pre>`;
                 })
                 .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#111;padding:10px;border-radius:4px;margin:8px 0;">$2</pre>')
-                .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                 .replace(/`(.+?)`/g, '<code style="background:#222;padding:2px 5px;border-radius:3px;">$1</code>')
-                .replace(/\n/g, "<br>");
+                .replace(/\n/g, '<br>');
         }
     </script>
 </body>

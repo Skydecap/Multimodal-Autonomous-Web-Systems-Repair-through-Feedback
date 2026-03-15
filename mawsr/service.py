@@ -67,6 +67,14 @@ class WebRepairService:
         self.source_dir = self._resolve_source_dir(source_dir)
 
     async def run_workflow(self, bug_report: str) -> dict[str, Any]:
+        print(f"\n{'#'*60}")
+        print(f"[MAWSR] Workflow started")
+        print(f"[MAWSR] Bug report : {bug_report[:120]}{'...' if len(bug_report) > 120 else ''}")
+        print(f"[MAWSR] Target URL : {self.target_url}")
+        print(f"[MAWSR] Source dir : {self.source_dir}")
+        print(f"{'#'*60}")
+        print(f"[MAWSR] Step 1/3 — Planner (browser interaction via MCP)")
+
         app = build_graph()
         initial_state = AgentState(
             bug_report=bug_report,
@@ -79,6 +87,15 @@ class WebRepairService:
         self.latest_state.setdefault("target_url", self.target_url)
         self.latest_state.setdefault("source_dir", self.source_dir)
         add_iteration(feedback="", analysis=self.latest_state.get("root_cause_analysis", ""))
+
+        print(f"\n{'#'*60}")
+        print(f"[MAWSR] Workflow COMPLETE")
+        rca = self.latest_state.get('root_cause_analysis', '')
+        print(f"[MAWSR] Root cause analysis: {len(rca)} chars generated")
+        relevant = self.latest_state.get('relevant_files', [])
+        if relevant:
+            print(f"[MAWSR] Relevant files identified: {', '.join(relevant[:5])}")
+        print(f"{'#'*60}\n")
         return self.latest_state
 
     def analyze_message(self, message: str) -> dict[str, Any]:

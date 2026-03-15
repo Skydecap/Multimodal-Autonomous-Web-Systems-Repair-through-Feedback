@@ -43,8 +43,11 @@ def create_dashboard_blueprint(service: WebRepairService, prefix: str = "") -> B
             service.set_source_dir(str(data["source_dir"]))
 
         try:
+            print(f"\n[Dashboard] Bug report received from web UI")
+            print(f"[Dashboard] Running full repair workflow...")
             final_state = asyncio.run(service.run_workflow(bug_report))
             trace = final_state.get("trace_summary", {})
+            print(f"[Dashboard] Workflow complete — sending response to UI")
             return jsonify({
                 "status": "success",
                 "network_errors": len(trace.get("failed_network_requests", [])),

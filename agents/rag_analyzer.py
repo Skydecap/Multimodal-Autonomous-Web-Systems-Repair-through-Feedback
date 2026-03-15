@@ -155,6 +155,7 @@ async def rag_analyzer_node(state: AgentState):
     2. Retrieves the most relevant chunks for the bug context
     3. Sends them to the LLM to generate a root cause analysis and code fix
     """
+    print(f"\n[MAWSR] Step 3/3 — RAG Analyzer (root cause + code fix)")
     print(f"\n{'='*60}")
     print(f"[RAG Analyzer] Starting RAG-based root cause analysis...")
     print(f"{'='*60}")

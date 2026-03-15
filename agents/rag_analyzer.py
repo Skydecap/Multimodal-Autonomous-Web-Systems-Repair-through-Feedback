@@ -12,7 +12,10 @@ from dotenv import load_dotenv
 from core.state import AgentState
 
 # File extensions to index from the website source
-SOURCE_EXTENSIONS = {".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".php", ".py"}
+SOURCE_EXTENSIONS = {
+    ".html", ".css", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".php", ".py",
+    ".json", ".yml", ".yaml",
+}
 
 # Persistent FAISS index directory for cached source embeddings
 FAISS_INDEX_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts", "faiss_source_index")
@@ -22,6 +25,28 @@ FAISS_HASH_FILE = os.path.join(FAISS_INDEX_DIR, "source_hash.txt")
 def _resolve_llm_api_key() -> str | None:
     load_dotenv(override=False)
     return os.getenv("OPENAI_API_KEY") or os.getenv("GITHUB_TOKEN")
+
+
+def _source_manifest(source_docs: list[Document], limit: int = 250) -> str:
+    """Build a stable, explicit list of real source files for prompt grounding."""
+    files = sorted({doc.metadata.get("source", "") for doc in source_docs if doc.metadata.get("source")})
+    if not files:
+        return "(no source files indexed)"
+    shown = files[:limit]
+    manifest = "\n".join(f"- {path}" for path in shown)
+    hidden = len(files) - len(shown)
+    if hidden > 0:
+        manifest += f"\n- ... and {hidden} more file(s)"
+    return manifest
+
+
+def _calc_retrieval_k(vectorstore, default_k: int = 20, max_k: int = 40) -> int:
+    """Use a wider retrieval window to reduce missing related files."""
+    docstore = getattr(vectorstore, "docstore", None)
+    total_docs = len(getattr(docstore, "_dict", {})) if docstore is not None else 0
+    if total_docs <= 0:
+        return default_k
+    return max(8, min(max_k, total_docs, default_k))
 
 
 def _load_website_sources(source_dir: str) -> list[Document]:
@@ -225,11 +250,13 @@ async def rag_analyzer_node(state: AgentState):
         f"Find the source code causing these errors and suggest a fix."
     )
 
-    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=8)
+    k = _calc_retrieval_k(vectorstore)
+    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=k)
     print(f"[RAG] Retrieved {len(retrieved_docs)} relevant chunks")
 
     # --- 4. Build context for the LLM ---
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
+    source_manifest = _source_manifest(source_docs)
 
     llm = ChatOpenAI(
         model="gpt-4o",
@@ -242,12 +269,15 @@ async def rag_analyzer_node(state: AgentState):
 
 You are given a bug report, the trace data from reproducing the bug in a browser, and the relevant source code of the website.
 
+You also have an authoritative source file manifest. You MUST only reference and patch files that appear in that manifest.
+
 Your task:
 1. Identify the ROOT CAUSE of the bug in the source code.
 2. Explain what is wrong and why.
 3. Provide the EXACT code fix as a diff (showing the old code and new code).
 4. If there are multiple bugs, provide a SEPARATE diff block for each fix.
 5. Make sure your fixes are CONSISTENT across all files — e.g. if one file writes data to localStorage in a certain format, any other file reading it must use the same format.
+6. NEVER invent filenames. If evidence is insufficient, say so explicitly and ask for a wider source_dir.
 
 CRITICAL DIFF FORMAT RULES:
 - Each diff block MUST start with: --- a/FILENAME (the filename relative to the project)
@@ -257,6 +287,7 @@ CRITICAL DIFF FORMAT RULES:
 - Do NOT include unchanged context lines
 - Do NOT include @@ hunk headers or +++ lines
 - Each - line and + line should contain the code WITHOUT leading whitespace (indentation is auto-detected)
+- Every filename used in diff blocks MUST exist in the provided source file manifest
 
 Example of a CORRECT diff:
 ```diff
@@ -293,6 +324,9 @@ Format your response as:
 
 ### BUG REPORT
 {bug_report}
+
+### SOURCE FILE MANIFEST (authoritative)
+{source_manifest}
 
 ### RETRIEVED CONTEXT (Source code + Trace data)
 {context_text}
@@ -380,8 +414,10 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
         f"Find the source code and suggest a better fix."
     )
 
-    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=8)
+    k = _calc_retrieval_k(vectorstore)
+    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=k)
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
+    source_manifest = _source_manifest(source_docs)
 
     # --- 4. LLM with feedback context ---
     llm = ChatOpenAI(
@@ -396,6 +432,8 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
 You previously suggested a fix for a bug, but the human reviewer has provided feedback.
 You must revise your analysis and provide an UPDATED fix based on the feedback.
 
+You also have an authoritative source file manifest. You MUST only reference and patch files that appear in that manifest.
+
 ## Previous Analysis
 {previous_analysis}
 
@@ -407,6 +445,7 @@ You must revise your analysis and provide an UPDATED fix based on the feedback.
 2. Re-examine the source code and trace data.
 3. Provide a REVISED root cause analysis and code fix.
 4. Make sure your fixes are CONSISTENT across all files — e.g. if one file writes data to localStorage in a certain format, any other file reading it must use the same format.
+5. NEVER invent filenames. If evidence is insufficient, say so explicitly and request more context.
 
 CRITICAL DIFF FORMAT RULES:
 - Each diff block MUST start with: --- a/FILENAME (the filename relative to the project)
@@ -418,6 +457,7 @@ CRITICAL DIFF FORMAT RULES:
 - Make sure to stick with the domain of web server while performing changes in end-points
 - Provide a SEPARATE diff block for each independent fix
 - Each - line and + line should contain the code WITHOUT leading whitespace (indentation is auto-detected)
+- Every filename used in diff blocks MUST exist in the provided source file manifest
 
 Format your response as:
 
@@ -447,6 +487,9 @@ Format your response as:
 
 ### BUG REPORT
 {bug_report}
+
+### SOURCE FILE MANIFEST (authoritative)
+{source_manifest}
 
 ### RETRIEVED CONTEXT (Source code + Trace data)
 {context_text}

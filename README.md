@@ -9,14 +9,10 @@ Install this library in any other web UI project, then run a separate dashboard 
 ## Install
 
 ```bash
-pip install mawsr
+pip install "git+https://github.com/Skydecap/Multimodal-Autonomous-Web-Systems-Repair-through-Feedback.git"
 ```
 
-Or from source:
 
-```bash
-pip install .
-```
 
 ## Run separate dashboard server
 
@@ -32,6 +28,26 @@ Notes:
 
 - `--target-url` can point to a locally hosted website or remote URL.
 - `--source-dir` can be relative to your current terminal directory or absolute.
+
+### Using `.env` for target/source
+
+Create a `.env` file in your web UI project root:
+
+```env
+MAWSR_TARGET_URL=http://127.0.0.1:3000
+MAWSR_SOURCE_DIR=./src
+```
+
+Then just run:
+
+```bash
+mawsr-dashboard --port 8000
+```
+
+Supported env keys:
+
+- `MAWSR_TARGET_URL` (preferred), or `TARGET_URL`
+- `MAWSR_SOURCE_DIR` (preferred), or `SOURCE_DIR`
 
 ## API endpoints
 

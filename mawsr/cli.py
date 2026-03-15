@@ -7,8 +7,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run MAWSR dashboard server")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind")
-    parser.add_argument("--target-url", default="http://127.0.0.1:3000", help="Website URL to test")
-    parser.add_argument("--source-dir", default="test", help="Source directory for patch preview/apply")
+    parser.add_argument("--target-url", default=None, help="Website URL to test (defaults from .env)")
+    parser.add_argument("--source-dir", default=None, help="Source directory for patch preview/apply (defaults from .env)")
     parser.add_argument("--route-prefix", default="", help="Optional route prefix, e.g. /mawsr")
     args = parser.parse_args()
 

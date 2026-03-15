@@ -2,6 +2,7 @@ import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any
+from dotenv import load_dotenv
 
 from core.state import AgentState
 from graph import build_graph
@@ -33,15 +34,33 @@ class WorkflowResult:
 class WebRepairService:
     """Reusable service that runs the agentic workflow and stores latest result."""
 
-    def __init__(self, target_url: str = "http://127.0.0.1:3000", source_dir: str = "test"):
-        self.target_url = target_url
+    def __init__(self, target_url: str | None = None, source_dir: str | None = None):
+        # Load .env from current working directory (non-destructive for existing env vars).
+        load_dotenv(override=False)
+        self.target_url = self._resolve_target_url(target_url)
         self.source_dir = self._resolve_source_dir(source_dir)
         self.latest_state: dict[str, Any] = {}
         self.preview_data: dict[str, str] = {}
 
     @staticmethod
-    def _resolve_source_dir(source_dir: str) -> str:
+    def _first_env(*keys: str) -> str | None:
+        for key in keys:
+            value = os.getenv(key)
+            if value:
+                return value
+        return None
+
+    @classmethod
+    def _resolve_target_url(cls, target_url: str | None) -> str:
+        if target_url:
+            return target_url
+        return cls._first_env("MAWSR_TARGET_URL", "TARGET_URL", "target_url") or "http://127.0.0.1:3000"
+
+    @classmethod
+    def _resolve_source_dir(cls, source_dir: str | None) -> str:
         """Resolve source directory relative to current working directory when needed."""
+        if not source_dir:
+            source_dir = cls._first_env("MAWSR_SOURCE_DIR", "SOURCE_DIR", "source_dir") or "test"
         return source_dir if os.path.isabs(source_dir) else os.path.abspath(source_dir)
 
     def set_source_dir(self, source_dir: str) -> None:

@@ -155,8 +155,8 @@ def create_dashboard_blueprint(service: WebRepairService, prefix: str = "") -> B
 
 
 def create_dashboard_app(
-    target_url: str = "http://127.0.0.1:3000",
-    source_dir: str = "test",
+    target_url: str | None = None,
+    source_dir: str | None = None,
     route_prefix: str = "",
 ) -> Flask:
     app = Flask(__name__)

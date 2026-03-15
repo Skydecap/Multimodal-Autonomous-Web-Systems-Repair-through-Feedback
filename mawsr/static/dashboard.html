@@ -59,41 +59,6 @@
             padding: 20px;
         }
 
-        .config-section {
-            background: #16213e;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid #0f3460;
-        }
-
-        .config-section h2 {
-            font-size: 16px;
-            color: #e94560;
-            margin-bottom: 12px;
-        }
-
-        .config-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr;
-            gap: 12px;
-        }
-
-        .config-grid textarea,
-        .config-grid input {
-            width: 100%;
-            background: #0a0a23;
-            border: 1px solid #0f3460;
-            color: #e0e0e0;
-            border-radius: 6px;
-            padding: 10px;
-            font-size: 13px;
-        }
-
-        .config-grid textarea {
-            min-height: 84px;
-            resize: vertical;
-        }
 
         .preview-section {
             margin-bottom: 20px;
@@ -205,14 +170,6 @@
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-        }
-
-        .btn-run {
-            background: #673ab7;
-        }
-
-        .btn-run:hover:not(:disabled) {
-            background: #512da8;
         }
 
         .btn-apply {
@@ -387,18 +344,8 @@
     <div class="main-content">
         <div id="status-msg" class="status-msg"></div>
 
-        <div class="config-section">
-            <h2>Run Analysis</h2>
-            <div class="config-grid">
-                <textarea id="bug-report"
-                    placeholder="Describe the bug you want analyzed... Example: Checkout button fails after entering card details."></textarea>
-                <input id="target-url" placeholder="Target URL (for example http://127.0.0.1:3000)">
-                <input id="source-dir" placeholder="Source dir (for example ./src)">
-            </div>
-            <div class="actions-section" style="margin-top: 12px; margin-bottom: 0;">
-                <button class="btn btn-run" onclick="runWorkflow()">Run Workflow</button>
-                <button class="btn btn-refresh" onclick="loadAnalysis()">Refresh Analysis</button>
-            </div>
+        <div class="actions-section">
+            <button class="btn btn-refresh" onclick="loadAnalysis()">Refresh Analysis</button>
         </div>
 
         <div class="preview-section">
@@ -450,6 +397,7 @@
         let previewApplied = false;
         let patchPushed = false;
         let iterations = [];
+        let previewFilename = null;
 
         window.addEventListener("DOMContentLoaded", () => {
             loadAnalysis();
@@ -464,42 +412,6 @@
             return data;
         }
 
-        async function runWorkflow() {
-            const bugReport = document.getElementById("bug-report").value.trim();
-            if (!bugReport) {
-                showStatus("error", "Please enter a bug report.");
-                return;
-            }
-
-            const payload = { bug_report: bugReport };
-            const targetInput = document.getElementById("target-url").value.trim();
-            const sourceInput = document.getElementById("source-dir").value.trim();
-            if (targetInput) payload.target_url = targetInput;
-            if (sourceInput) payload.source_dir = sourceInput;
-
-            showStatus("loading", '<span class="spinner"></span> Running workflow...');
-            disableButtons(true);
-            try {
-                const data = await api("/report", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                });
-
-                if (targetInput) targetUrl = targetInput;
-                document.getElementById("analysis-content").innerHTML = formatMarkdown(data.root_cause_analysis || "No analysis returned.");
-                previewApplied = false;
-                patchPushed = false;
-                updatePatchStatus("pending");
-                refreshPreviews();
-                showStatus("success", "Workflow completed. Patch suggestions are ready for preview.");
-                await loadAnalysis();
-            } catch (err) {
-                showStatus("error", `Failed to run workflow: ${err.message}`);
-            }
-            disableButtons(false);
-        }
-
         async function loadAnalysis() {
             try {
                 const data = await api("/review/analysis");
@@ -510,16 +422,6 @@
                 targetUrl = data.target_url || targetUrl;
                 patchPushed = !!data.patch_applied;
                 iterations = data.iterations || [];
-
-                if (targetUrl) {
-                    document.getElementById("target-url").value = targetUrl;
-                }
-                if (data.source_dir) {
-                    document.getElementById("source-dir").value = data.source_dir;
-                }
-                if (data.bug_report) {
-                    document.getElementById("bug-report").value = data.bug_report;
-                }
 
                 updatePatchStatus(patchPushed ? "applied" : (previewApplied ? "applied" : "pending"));
                 renderHistory();
@@ -536,10 +438,16 @@
                 const data = await api("/review/apply", { method: "POST" });
                 previewApplied = true;
                 patchPushed = false;
+                const files = Array.isArray(data.files) ? data.files : [];
+                previewFilename = files.find(f => f.toLowerCase().endsWith(".html")) || files[0] || null;
                 updatePatchStatus("applied");
                 document.getElementById("btn-revert").disabled = false;
                 document.getElementById("btn-push").disabled = false;
-                document.getElementById("iframe-after").src = `/review/preview/index.html?t=${Date.now()}`;
+                if (previewFilename) {
+                    document.getElementById("iframe-after").src = `/review/preview/${encodeURIComponent(previewFilename)}?t=${Date.now()}`;
+                } else {
+                    document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+                }
                 showStatus("success", `Preview ready for ${data.files_modified} file(s). Source files are NOT changed until you click Push Patch.`);
             } catch (err) {
                 showStatus("error", `Failed to preview patch: ${err.message}`);
@@ -549,6 +457,7 @@
 
         function clearPreview() {
             previewApplied = false;
+            previewFilename = null;
             if (!patchPushed) {
                 updatePatchStatus("pending");
             }
@@ -618,8 +527,8 @@
         function refreshPreviews() {
             const ts = Date.now();
             document.getElementById("iframe-before").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${ts}`;
-            if (previewApplied) {
-                document.getElementById("iframe-after").src = `/review/preview/index.html?t=${ts + 1}`;
+            if (previewApplied && previewFilename) {
+                document.getElementById("iframe-after").src = `/review/preview/${encodeURIComponent(previewFilename)}?t=${ts + 1}`;
             } else {
                 document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${ts + 1}`;
             }

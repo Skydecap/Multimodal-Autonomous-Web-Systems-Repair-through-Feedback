@@ -2,7 +2,7 @@ import asyncio
 import os
 import traceback
 
-from flask import Blueprint, Flask, jsonify, request, send_from_directory
+from flask import Blueprint, Flask, jsonify, redirect, request, send_from_directory, url_for
 from flask_cors import CORS
 
 from agents.rag_analyzer import rag_reanalyze_with_feedback
@@ -20,6 +20,10 @@ def _extract_real_error(exc: Exception) -> str:
 
 def create_dashboard_blueprint(service: WebRepairService, prefix: str = "") -> Blueprint:
     bp = Blueprint("mawsr_dashboard", __name__, url_prefix=prefix)
+
+    @bp.route("/", methods=["GET"])
+    def root_redirect():
+        return redirect(url_for("mawsr_dashboard.dashboard_ui"))
 
     @bp.route("/dashboard", methods=["GET"])
     def dashboard_ui():

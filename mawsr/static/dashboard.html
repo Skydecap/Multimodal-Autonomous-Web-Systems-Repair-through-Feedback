@@ -4,252 +4,690 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MAWSR Dashboard</title>
+    <title>Human-in-the-Loop Review Dashboard</title>
     <style>
-        :root {
-            --bg: #f6f8fb;
-            --panel: #ffffff;
-            --ink: #11243a;
-            --muted: #5c6b7a;
-            --brand: #0b8f7a;
-            --brand-2: #0a5c8f;
-            --danger: #d14343;
-            --ring: rgba(11, 143, 122, 0.2);
-        }
-
         * {
             box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         body {
-            margin: 0;
-            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-            color: var(--ink);
-            background:
-                radial-gradient(circle at 5% 5%, #dff5ef 0%, transparent 30%),
-                radial-gradient(circle at 95% 0%, #dcefff 0%, transparent 35%),
-                var(--bg);
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
             min-height: 100vh;
         }
 
-        .shell {
-            max-width: 1100px;
-            margin: 24px auto;
-            padding: 0 16px;
+        .header {
+            background: #16213e;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #0f3460;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            color: #e94560;
+        }
+
+        .header .status-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: #ff9800;
+            color: #000;
+        }
+
+        .status-applied {
+            background: #4caf50;
+            color: #fff;
+        }
+
+        .status-reverted {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .main-content {
+            padding: 20px;
+        }
+
+        .config-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #0f3460;
+        }
+
+        .config-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
+        }
+
+        .config-grid {
             display: grid;
-            gap: 16px;
-        }
-
-        .card {
-            background: var(--panel);
-            border-radius: 16px;
-            box-shadow: 0 10px 35px rgba(17, 36, 58, 0.08);
-            padding: 16px;
-        }
-
-        h1 {
-            margin: 0 0 8px;
-            font-size: 1.5rem;
-        }
-
-        h2 {
-            margin: 0 0 10px;
-            font-size: 1rem;
-        }
-
-        p {
-            margin: 0;
-            color: var(--muted);
-        }
-
-        textarea,
-        input {
-            width: 100%;
-            border: 1px solid #d4dde8;
-            border-radius: 10px;
-            padding: 10px;
-            font: inherit;
-            outline: none;
-            transition: box-shadow 0.2s ease;
-        }
-
-        textarea:focus,
-        input:focus {
-            box-shadow: 0 0 0 4px var(--ring);
-            border-color: var(--brand);
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            grid-template-columns: 2fr 1fr 1fr;
             gap: 12px;
         }
 
-        .actions {
+        .config-grid textarea,
+        .config-grid input {
+            width: 100%;
+            background: #0a0a23;
+            border: 1px solid #0f3460;
+            color: #e0e0e0;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 13px;
+        }
+
+        .config-grid textarea {
+            min-height: 84px;
+            resize: vertical;
+        }
+
+        .preview-section {
+            margin-bottom: 20px;
+        }
+
+        .preview-section h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #e94560;
+        }
+
+        .preview-container {
             display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
+            gap: 15px;
+            height: 420px;
         }
 
-        button {
+        .preview-panel {
+            flex: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #0f3460;
+            position: relative;
+        }
+
+        .preview-panel .panel-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 52, 96, 0.9);
+            color: #e94560;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            z-index: 10;
+            text-align: center;
+        }
+
+        .preview-panel iframe {
+            width: 100%;
+            height: 100%;
             border: none;
-            border-radius: 999px;
-            padding: 10px 16px;
-            color: #fff;
-            background: linear-gradient(135deg, var(--brand), var(--brand-2));
-            font-weight: 600;
-            cursor: pointer;
+            background: #fff;
         }
 
-        button.secondary {
-            background: #58697d;
+        .analysis-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #0f3460;
         }
 
-        button.danger {
-            background: var(--danger);
+        .analysis-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
         }
 
-        pre {
+        .analysis-content {
+            background: #0a0a23;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: "Consolas", "Courier New", monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 420px;
+            overflow-y: auto;
             white-space: pre-wrap;
-            background: #0f1f33;
-            color: #e9f2ff;
-            border-radius: 10px;
-            padding: 12px;
-            max-height: 360px;
-            overflow: auto;
-            margin: 0;
-            font-size: 0.85rem;
+            word-wrap: break-word;
         }
 
-        .status {
-            font-weight: 700;
-            color: var(--brand-2);
+        .analysis-content h2 {
+            color: #4fc3f7;
+            font-size: 15px;
+            margin-top: 15px;
+        }
+
+        .analysis-content .diff-add {
+            color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .analysis-content .diff-remove {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        .actions-section {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #fff;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-run {
+            background: #673ab7;
+        }
+
+        .btn-run:hover:not(:disabled) {
+            background: #512da8;
+        }
+
+        .btn-apply {
+            background: #4caf50;
+        }
+
+        .btn-apply:hover:not(:disabled) {
+            background: #388e3c;
+        }
+
+        .btn-revert {
+            background: #f44336;
+        }
+
+        .btn-revert:hover:not(:disabled) {
+            background: #c62828;
+        }
+
+        .btn-push {
+            background: #2196f3;
+        }
+
+        .btn-push:hover:not(:disabled) {
+            background: #1565c0;
+        }
+
+        .btn-refresh {
+            background: #ff9800;
+        }
+
+        .btn-refresh:hover:not(:disabled) {
+            background: #e65100;
+        }
+
+        .feedback-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+            margin-bottom: 20px;
+        }
+
+        .feedback-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
+        }
+
+        .feedback-section textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #0a0a23;
+            color: #e0e0e0;
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .feedback-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-feedback {
+            background: #9c27b0;
+        }
+
+        .btn-feedback:hover:not(:disabled) {
+            background: #6a1b9a;
+        }
+
+        .status-msg {
+            padding: 10px 16px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status-msg.show {
+            display: block;
+        }
+
+        .status-msg.info {
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid #2196f3;
+            color: #90caf9;
+        }
+
+        .status-msg.success {
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid #4caf50;
+            color: #a5d6a7;
+        }
+
+        .status-msg.error {
+            background: rgba(244, 67, 54, 0.15);
+            border: 1px solid #f44336;
+            color: #ef9a9a;
+        }
+
+        .status-msg.loading {
+            background: rgba(255, 152, 0, 0.15);
+            border: 1px solid #ff9800;
+            color: #ffe0b2;
+        }
+
+        .history-section {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+
+        .history-section h2 {
+            font-size: 16px;
+            color: #e94560;
+            margin-bottom: 12px;
+        }
+
+        .history-item {
+            padding: 10px;
+            border-bottom: 1px solid #0f3460;
+            font-size: 13px;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-item .iter-label {
+            color: #ff9800;
+            font-weight: bold;
+        }
+
+        .history-item .iter-feedback {
+            color: #aaa;
+            font-style: italic;
+            margin-top: 4px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
 
 <body>
-    <main class="shell">
-        <section class="card">
-            <h1>MAWSR Dashboard</h1>
-            <p>Submit bug reports from any website and inspect analysis and patch workflow.</p>
-        </section>
+    <div class="header">
+        <h1>Human-in-the-Loop Review Dashboard</h1>
+        <span id="patch-status" class="status-badge status-pending">Pending Review</span>
+    </div>
 
-        <section class="card">
+    <div class="main-content">
+        <div id="status-msg" class="status-msg"></div>
+
+        <div class="config-section">
             <h2>Run Analysis</h2>
-            <div class="grid">
-                <div>
-                    <label for="bug_report">Bug report</label>
-                    <textarea id="bug_report" rows="5"
-                        placeholder="Example: Checkout button does not submit order."></textarea>
+            <div class="config-grid">
+                <textarea id="bug-report"
+                    placeholder="Describe the bug you want analyzed... Example: Checkout button fails after entering card details."></textarea>
+                <input id="target-url" placeholder="Target URL (for example http://127.0.0.1:3000)">
+                <input id="source-dir" placeholder="Source dir (for example ./src)">
+            </div>
+            <div class="actions-section" style="margin-top: 12px; margin-bottom: 0;">
+                <button class="btn btn-run" onclick="runWorkflow()">Run Workflow</button>
+                <button class="btn btn-refresh" onclick="loadAnalysis()">Refresh Analysis</button>
+            </div>
+        </div>
+
+        <div class="preview-section">
+            <h2>Live Preview: Before and After</h2>
+            <div class="preview-container">
+                <div class="preview-panel">
+                    <div class="panel-label">BEFORE (Original Site)</div>
+                    <iframe id="iframe-before"></iframe>
                 </div>
-                <div>
-                    <label for="target_url">Target URL</label>
-                    <input id="target_url" placeholder="https://your-site.example.com" />
-                    <div style="height:10px"></div>
-                    <label for="source_dir">Source directory</label>
-                    <input id="source_dir" placeholder="/path/to/source" />
-                    <div class="actions">
-                        <button id="runBtn">Run Workflow</button>
-                        <button class="secondary" id="refreshBtn">Refresh Analysis</button>
-                    </div>
+                <div class="preview-panel">
+                    <div class="panel-label">AFTER (Preview Patch)</div>
+                    <iframe id="iframe-after"></iframe>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <section class="card">
-            <h2>Patch Controls</h2>
-            <div class="actions">
-                <button id="previewBtn">Preview Patch</button>
-                <button id="pushBtn">Push Patch</button>
-                <button class="danger" id="revertBtn">Revert Patch</button>
+        <div class="actions-section">
+            <button id="btn-apply" class="btn btn-apply" onclick="applyPatch()">Apply Patch (Preview Only)</button>
+            <button id="btn-revert" class="btn btn-revert" onclick="clearPreview()" disabled>Clear Preview</button>
+            <button id="btn-push" class="btn btn-push" onclick="pushPatch()" disabled>Push Patch</button>
+            <button id="btn-refresh-preview" class="btn btn-refresh" onclick="refreshPreviews()">Refresh
+                Previews</button>
+        </div>
+
+        <div class="analysis-section">
+            <h2>RAG Analysis and Suggested Fix</h2>
+            <div id="analysis-content" class="analysis-content">Loading analysis...</div>
+        </div>
+
+        <div class="feedback-section">
+            <h2>Feedback for Re-analysis</h2>
+            <textarea id="feedback-text"
+                placeholder="Describe what should be changed in the suggested patch..."></textarea>
+            <div class="feedback-actions">
+                <button class="btn btn-feedback" onclick="submitFeedback()">Re-analyze with Feedback</button>
             </div>
-            <p style="margin-top:8px">Status: <span id="status" class="status">Idle</span></p>
-        </section>
+        </div>
 
-        <section class="card">
-            <h2>Analysis Output</h2>
-            <pre id="analysis">No analysis yet.</pre>
-        </section>
-    </main>
+        <div class="history-section">
+            <h2>Iteration History</h2>
+            <div id="history-list">
+                <div class="history-item" style="color: #666;">No iterations yet.</div>
+            </div>
+        </div>
+    </div>
 
     <script>
-        const statusEl = document.getElementById("status");
-        const analysisEl = document.getElementById("analysis");
+        let targetUrl = "http://127.0.0.1:3000";
+        let previewApplied = false;
+        let patchPushed = false;
+        let iterations = [];
 
-        const setStatus = (text) => { statusEl.textContent = text; };
+        window.addEventListener("DOMContentLoaded", () => {
+            loadAnalysis();
+        });
 
-        async function callApi(path, options = {}) {
-            const response = await fetch(path, {
-                headers: { "Content-Type": "application/json" },
-                ...options,
-            });
+        async function api(path, options = {}) {
+            const response = await fetch(path, options);
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(data.error || data.message || `Request failed: ${response.status}`);
+                throw new Error(data.error || `Request failed (${response.status})`);
             }
             return data;
         }
 
-        async function refreshAnalysis() {
-            setStatus("Loading latest analysis...");
-            const data = await callApi("/review/analysis");
-            analysisEl.textContent = data.analysis || "No analysis available.";
-            setStatus(data.patch_applied ? "Patch applied" : "Patch not applied");
+        async function runWorkflow() {
+            const bugReport = document.getElementById("bug-report").value.trim();
+            if (!bugReport) {
+                showStatus("error", "Please enter a bug report.");
+                return;
+            }
+
+            const payload = { bug_report: bugReport };
+            const targetInput = document.getElementById("target-url").value.trim();
+            const sourceInput = document.getElementById("source-dir").value.trim();
+            if (targetInput) payload.target_url = targetInput;
+            if (sourceInput) payload.source_dir = sourceInput;
+
+            showStatus("loading", '<span class="spinner"></span> Running workflow...');
+            disableButtons(true);
+            try {
+                const data = await api("/report", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+
+                if (targetInput) targetUrl = targetInput;
+                document.getElementById("analysis-content").innerHTML = formatMarkdown(data.root_cause_analysis || "No analysis returned.");
+                previewApplied = false;
+                patchPushed = false;
+                updatePatchStatus("pending");
+                refreshPreviews();
+                showStatus("success", "Workflow completed. Patch suggestions are ready for preview.");
+                await loadAnalysis();
+            } catch (err) {
+                showStatus("error", `Failed to run workflow: ${err.message}`);
+            }
+            disableButtons(false);
         }
 
-        document.getElementById("runBtn").addEventListener("click", async () => {
+        async function loadAnalysis() {
             try {
-                setStatus("Running workflow...");
-                const payload = {
-                    bug_report: document.getElementById("bug_report").value.trim(),
-                    target_url: document.getElementById("target_url").value.trim(),
-                    source_dir: document.getElementById("source_dir").value.trim(),
-                };
-                const data = await callApi("/report", { method: "POST", body: JSON.stringify(payload) });
-                analysisEl.textContent = data.root_cause_analysis || "No analysis returned.";
-                setStatus("Workflow completed");
+                const data = await api("/review/analysis");
+                if (data.analysis) {
+                    document.getElementById("analysis-content").innerHTML = formatMarkdown(data.analysis);
+                }
+
+                targetUrl = data.target_url || targetUrl;
+                patchPushed = !!data.patch_applied;
+                iterations = data.iterations || [];
+
+                if (targetUrl) {
+                    document.getElementById("target-url").value = targetUrl;
+                }
+                if (data.source_dir) {
+                    document.getElementById("source-dir").value = data.source_dir;
+                }
+                if (data.bug_report) {
+                    document.getElementById("bug-report").value = data.bug_report;
+                }
+
+                updatePatchStatus(patchPushed ? "applied" : (previewApplied ? "applied" : "pending"));
+                renderHistory();
+                refreshPreviews();
             } catch (err) {
-                setStatus(`Error: ${err.message}`);
+                showStatus("error", `Could not load analysis: ${err.message}`);
             }
-        });
+        }
 
-        document.getElementById("refreshBtn").addEventListener("click", async () => {
-            try { await refreshAnalysis(); } catch (err) { setStatus(`Error: ${err.message}`); }
-        });
-
-        document.getElementById("previewBtn").addEventListener("click", async () => {
+        async function applyPatch() {
+            showStatus("loading", '<span class="spinner"></span> Generating preview patch...');
+            disableButtons(true);
             try {
-                setStatus("Generating preview...");
-                const data = await callApi("/review/apply", { method: "POST" });
-                setStatus(`Preview ready: ${data.files_modified} file(s)`);
+                const data = await api("/review/apply", { method: "POST" });
+                previewApplied = true;
+                patchPushed = false;
+                updatePatchStatus("applied");
+                document.getElementById("btn-revert").disabled = false;
+                document.getElementById("btn-push").disabled = false;
+                document.getElementById("iframe-after").src = `/review/preview/index.html?t=${Date.now()}`;
+                showStatus("success", `Preview ready for ${data.files_modified} file(s). Source files are NOT changed until you click Push Patch.`);
             } catch (err) {
-                setStatus(`Error: ${err.message}`);
+                showStatus("error", `Failed to preview patch: ${err.message}`);
             }
-        });
+            disableButtons(false);
+        }
 
-        document.getElementById("pushBtn").addEventListener("click", async () => {
+        function clearPreview() {
+            previewApplied = false;
+            if (!patchPushed) {
+                updatePatchStatus("pending");
+            }
+            document.getElementById("btn-revert").disabled = true;
+            document.getElementById("btn-push").disabled = true;
+            document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+            showStatus("info", "Preview cleared. Source files are still unchanged.");
+        }
+
+        async function pushPatch() {
+            if (!previewApplied && !patchPushed) {
+                showStatus("error", "Preview patch first before pushing changes.");
+                return;
+            }
+
+            if (!confirm("Push patch to source files? This will modify files in source_dir.")) {
+                return;
+            }
+
+            showStatus("loading", '<span class="spinner"></span> Applying patch to source files...');
+            disableButtons(true);
             try {
-                setStatus("Applying patch...");
-                const data = await callApi("/review/push", { method: "POST" });
-                setStatus(`Patch applied to ${data.files_modified} file(s)`);
+                const data = await api("/review/push", { method: "POST" });
+                patchPushed = true;
+                updatePatchStatus("applied");
+                showStatus("success", `Patch pushed to ${data.files_modified} file(s).`);
+                refreshPreviews();
             } catch (err) {
-                setStatus(`Error: ${err.message}`);
+                showStatus("error", `Failed to push patch: ${err.message}`);
             }
-        });
+            disableButtons(false);
+        }
 
-        document.getElementById("revertBtn").addEventListener("click", async () => {
+        async function submitFeedback() {
+            const feedback = document.getElementById("feedback-text").value.trim();
+            if (!feedback) {
+                showStatus("error", "Please enter feedback before re-analysis.");
+                return;
+            }
+
+            showStatus("loading", '<span class="spinner"></span> Re-analyzing with feedback...');
+            disableButtons(true);
             try {
-                setStatus("Reverting patch...");
-                await callApi("/review/revert", { method: "POST" });
-                setStatus("Patch reverted");
-            } catch (err) {
-                setStatus(`Error: ${err.message}`);
-            }
-        });
+                const data = await api("/review/feedback", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ feedback }),
+                });
 
-        refreshAnalysis().catch(() => setStatus("Ready"));
+                document.getElementById("analysis-content").innerHTML = formatMarkdown(data.analysis || "");
+                document.getElementById("feedback-text").value = "";
+                previewApplied = false;
+                patchPushed = false;
+                updatePatchStatus("pending");
+                if (Array.isArray(data.iterations)) {
+                    iterations = data.iterations;
+                    renderHistory();
+                }
+                clearPreview();
+                showStatus("success", "Re-analysis complete. Review updated patch suggestions.");
+            } catch (err) {
+                showStatus("error", `Feedback request failed: ${err.message}`);
+            }
+            disableButtons(false);
+        }
+
+        function refreshPreviews() {
+            const ts = Date.now();
+            document.getElementById("iframe-before").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${ts}`;
+            if (previewApplied) {
+                document.getElementById("iframe-after").src = `/review/preview/index.html?t=${ts + 1}`;
+            } else {
+                document.getElementById("iframe-after").src = `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}t=${ts + 1}`;
+            }
+        }
+
+        function showStatus(type, message) {
+            const el = document.getElementById("status-msg");
+            el.className = `status-msg show ${type}`;
+            el.innerHTML = message;
+        }
+
+        function updatePatchStatus(state) {
+            const badge = document.getElementById("patch-status");
+            badge.className = "status-badge";
+            if (state === "applied") {
+                badge.classList.add("status-applied");
+                badge.textContent = "Patch Applied";
+            } else if (state === "reverted") {
+                badge.classList.add("status-reverted");
+                badge.textContent = "Reverted";
+            } else {
+                badge.classList.add("status-pending");
+                badge.textContent = "Pending Review";
+            }
+        }
+
+        function disableButtons(disabled) {
+            document.querySelectorAll(".btn").forEach(btn => {
+                btn.disabled = disabled;
+            });
+            if (!disabled) {
+                document.getElementById("btn-revert").disabled = !previewApplied;
+                document.getElementById("btn-push").disabled = !previewApplied;
+            }
+        }
+
+        function renderHistory() {
+            const list = document.getElementById("history-list");
+            if (!iterations.length) {
+                list.innerHTML = '<div class="history-item" style="color: #666;">No iterations yet.</div>';
+                return;
+            }
+            list.innerHTML = iterations.map((it, i) => `
+                <div class="history-item">
+                    <div><span class="iter-label">Iteration ${i + 1}</span> - ${it.timestamp || ""}</div>
+                    ${it.feedback ? `<div class="iter-feedback">Feedback: "${it.feedback}"</div>` : ""}
+                </div>
+            `).join("");
+        }
+
+        function formatMarkdown(text) {
+            return text
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+                .replace(/^### (.+)$/gm, '<h3 style="color:#ff9800;font-size:14px;margin-top:12px;">$1</h3>')
+                .replace(/```diff\n([\s\S]*?)```/g, (m, code) => {
+                    const highlighted = code.split("\n").map(line => {
+                        if (line.startsWith("+")) return `<span class="diff-add">${line}</span>`;
+                        if (line.startsWith("-")) return `<span class="diff-remove">${line}</span>`;
+                        return line;
+                    }).join("\n");
+                    return `<pre style="background:#111;padding:10px;border-radius:4px;margin:8px 0;">${highlighted}</pre>`;
+                })
+                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#111;padding:10px;border-radius:4px;margin:8px 0;">$2</pre>')
+                .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                .replace(/`(.+?)`/g, '<code style="background:#222;padding:2px 5px;border-radius:3px;">$1</code>')
+                .replace(/\n/g, "<br>");
+        }
     </script>
 </body>
 

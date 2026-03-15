@@ -64,6 +64,8 @@ def create_dashboard_blueprint(service: WebRepairService, prefix: str = "") -> B
         return jsonify({
             "analysis": service.latest_state.get("root_cause_analysis", ""),
             "bug_report": service.latest_state.get("bug_report", ""),
+            "target_url": service.latest_state.get("target_url", service.target_url),
+            "source_dir": service.latest_state.get("source_dir", service.source_dir),
             "iterations": patch_state.get("iterations", []),
             "patch_applied": patch_state.get("applied", False),
         })

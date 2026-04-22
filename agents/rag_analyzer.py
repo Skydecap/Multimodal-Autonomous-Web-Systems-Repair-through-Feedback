@@ -49,6 +49,31 @@ def _calc_retrieval_k(vectorstore, default_k: int = 20, max_k: int = 40) -> int:
     return max(8, min(max_k, total_docs, default_k))
 
 
+def _print_retrieved_chunks_for_llm(retrieved_docs: list[Document]) -> None:
+    """Print the exact retrieved chunks that will be included in the LLM prompt."""
+    print("\n" + "=" * 60)
+    print("[RAG] Retrieved chunks being sent to LLM")
+    print("=" * 60)
+
+    if not retrieved_docs:
+        print("[RAG] No retrieved chunks to print.")
+        print("=" * 60)
+        return
+
+    for i, doc in enumerate(retrieved_docs, start=1):
+        source = doc.metadata.get("source", "unknown")
+        doc_type = doc.metadata.get("type", "unknown")
+        print(f"\n--- CHUNK {i}/{len(retrieved_docs)} ---")
+        print(f"[source] {source}")
+        print(f"[type]   {doc_type}")
+        print("[content]")
+        print(doc.page_content)
+
+    print("\n" + "=" * 60)
+    print("[RAG] End of retrieved chunks")
+    print("=" * 60)
+
+
 def _load_website_sources(source_dir: str) -> list[Document]:
     """Recursively load all website source files as LangChain Documents."""
     documents = []
@@ -253,6 +278,7 @@ async def rag_analyzer_node(state: AgentState):
     k = _calc_retrieval_k(vectorstore)
     retrieved_docs = vectorstore.similarity_search(retrieval_query, k=k)
     print(f"[RAG] Retrieved {len(retrieved_docs)} relevant chunks")
+    _print_retrieved_chunks_for_llm(retrieved_docs)
 
     # --- 4. Build context for the LLM ---
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
@@ -416,6 +442,8 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
 
     k = _calc_retrieval_k(vectorstore)
     retrieved_docs = vectorstore.similarity_search(retrieval_query, k=k)
+    print(f"[RAG] Retrieved {len(retrieved_docs)} relevant chunks")
+    _print_retrieved_chunks_for_llm(retrieved_docs)
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
     source_manifest = _source_manifest(source_docs)
 

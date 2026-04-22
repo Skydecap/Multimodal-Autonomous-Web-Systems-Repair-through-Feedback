@@ -40,3 +40,8 @@ mawsr = ["static/*.html"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["agents*", "core*", "utils*", "mawsr*"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:builtin type Swig.*has no __module__ attribute:DeprecationWarning",
+]

@@ -12,10 +12,7 @@ from dotenv import load_dotenv
 from core.state import AgentState
 
 # File extensions to index from the website source
-SOURCE_EXTENSIONS = {
-    ".html", ".css", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".php", ".py",
-    ".json", ".yml", ".yaml",
-}
+SOURCE_EXTENSIONS = {".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".php", ".py"}
 
 # Persistent FAISS index directory for cached source embeddings
 FAISS_INDEX_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts", "faiss_source_index")
@@ -25,53 +22,6 @@ FAISS_HASH_FILE = os.path.join(FAISS_INDEX_DIR, "source_hash.txt")
 def _resolve_llm_api_key() -> str | None:
     load_dotenv(override=False)
     return os.getenv("OPENAI_API_KEY") or os.getenv("GITHUB_TOKEN")
-
-
-def _source_manifest(source_docs: list[Document], limit: int = 250) -> str:
-    """Build a stable, explicit list of real source files for prompt grounding."""
-    files = sorted({doc.metadata.get("source", "") for doc in source_docs if doc.metadata.get("source")})
-    if not files:
-        return "(no source files indexed)"
-    shown = files[:limit]
-    manifest = "\n".join(f"- {path}" for path in shown)
-    hidden = len(files) - len(shown)
-    if hidden > 0:
-        manifest += f"\n- ... and {hidden} more file(s)"
-    return manifest
-
-
-def _calc_retrieval_k(vectorstore, default_k: int = 20, max_k: int = 40) -> int:
-    """Use a wider retrieval window to reduce missing related files."""
-    docstore = getattr(vectorstore, "docstore", None)
-    total_docs = len(getattr(docstore, "_dict", {})) if docstore is not None else 0
-    if total_docs <= 0:
-        return default_k
-    return max(8, min(max_k, total_docs, default_k))
-
-
-def _print_retrieved_chunks_for_llm(retrieved_docs: list[Document]) -> None:
-    """Print the exact retrieved chunks that will be included in the LLM prompt."""
-    print("\n" + "=" * 60)
-    print("[RAG] Retrieved chunks being sent to LLM")
-    print("=" * 60)
-
-    if not retrieved_docs:
-        print("[RAG] No retrieved chunks to print.")
-        print("=" * 60)
-        return
-
-    for i, doc in enumerate(retrieved_docs, start=1):
-        source = doc.metadata.get("source", "unknown")
-        doc_type = doc.metadata.get("type", "unknown")
-        print(f"\n--- CHUNK {i}/{len(retrieved_docs)} ---")
-        print(f"[source] {source}")
-        print(f"[type]   {doc_type}")
-        print("[content]")
-        print(doc.page_content)
-
-    print("\n" + "=" * 60)
-    print("[RAG] End of retrieved chunks")
-    print("=" * 60)
 
 
 def _load_website_sources(source_dir: str) -> list[Document]:
@@ -204,6 +154,24 @@ def _build_trace_documents(trace_summary: dict, bug_report: str) -> list[Documen
     return docs
 
 
+def _merge_unique_docs(*doc_lists: list[Document], max_docs: int = 12) -> list[Document]:
+    """Merge document lists while preserving order and removing duplicates by content hash."""
+    merged: list[Document] = []
+    seen: set[str] = set()
+
+    for docs in doc_lists:
+        for doc in docs:
+            key = hashlib.sha256(doc.page_content.encode("utf-8")).hexdigest()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(doc)
+            if len(merged) >= max_docs:
+                return merged
+
+    return merged
+
+
 async def rag_analyzer_node(state: AgentState):
     """
     RAG-based code analysis node.
@@ -250,19 +218,14 @@ async def rag_analyzer_node(state: AgentState):
         print("[RAG] No documents to index. Skipping analysis.")
         return {"root_cause_analysis": "No documents available for analysis."}
 
-    # --- 4. Merge trace chunks into the vectorstore (in-memory only) ---
+    # --- 4. Build trace vectorstore separately ---
+    trace_vectorstore = None
     if trace_docs:
         trace_chunks = splitter.split_documents(trace_docs)
         print(f"[RAG] Split trace data into {len(trace_chunks)} chunks")
-        if source_vectorstore:
-            source_vectorstore.add_documents(trace_chunks)
-            vectorstore = source_vectorstore
-        else:
-            vectorstore = FAISS.from_documents(trace_chunks, embeddings)
-    else:
-        vectorstore = source_vectorstore
+        trace_vectorstore = FAISS.from_documents(trace_chunks, embeddings)
 
-    print(f"[RAG] FAISS vector store ready")
+    print(f"[RAG] Vector stores ready")
 
     # --- 3. Retrieve relevant context ---
     # Build a rich query combining bug report + errors
@@ -275,14 +238,21 @@ async def rag_analyzer_node(state: AgentState):
         f"Find the source code causing these errors and suggest a fix."
     )
 
-    k = _calc_retrieval_k(vectorstore)
-    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=k)
-    print(f"[RAG] Retrieved {len(retrieved_docs)} relevant chunks")
-    _print_retrieved_chunks_for_llm(retrieved_docs)
+    source_hits: list[Document] = []
+    trace_hits: list[Document] = []
+
+    # Always retrieve from source index when available so code chunks are guaranteed in context.
+    if source_vectorstore:
+        source_hits = source_vectorstore.similarity_search(retrieval_query, k=8)
+    if trace_vectorstore:
+        trace_hits = trace_vectorstore.similarity_search(retrieval_query, k=4)
+
+    retrieved_docs = _merge_unique_docs(source_hits, trace_hits, max_docs=12)
+    print(f"[RAG] Retrieved {len(retrieved_docs)} relevant chunks "
+          f"(source={len(source_hits)}, trace={len(trace_hits)})")
 
     # --- 4. Build context for the LLM ---
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
-    source_manifest = _source_manifest(source_docs)
 
     llm = ChatOpenAI(
         model="gpt-4o",
@@ -295,15 +265,12 @@ async def rag_analyzer_node(state: AgentState):
 
 You are given a bug report, the trace data from reproducing the bug in a browser, and the relevant source code of the website.
 
-You also have an authoritative source file manifest. You MUST only reference and patch files that appear in that manifest.
-
 Your task:
 1. Identify the ROOT CAUSE of the bug in the source code.
 2. Explain what is wrong and why.
 3. Provide the EXACT code fix as a diff (showing the old code and new code).
 4. If there are multiple bugs, provide a SEPARATE diff block for each fix.
 5. Make sure your fixes are CONSISTENT across all files — e.g. if one file writes data to localStorage in a certain format, any other file reading it must use the same format.
-6. NEVER invent filenames. If evidence is insufficient, say so explicitly and ask for a wider source_dir.
 
 CRITICAL DIFF FORMAT RULES:
 - Each diff block MUST start with: --- a/FILENAME (the filename relative to the project)
@@ -313,7 +280,6 @@ CRITICAL DIFF FORMAT RULES:
 - Do NOT include unchanged context lines
 - Do NOT include @@ hunk headers or +++ lines
 - Each - line and + line should contain the code WITHOUT leading whitespace (indentation is auto-detected)
-- Every filename used in diff blocks MUST exist in the provided source file manifest
 
 Example of a CORRECT diff:
 ```diff
@@ -350,9 +316,6 @@ Format your response as:
 
 ### BUG REPORT
 {bug_report}
-
-### SOURCE FILE MANIFEST (authoritative)
-{source_manifest}
 
 ### RETRIEVED CONTEXT (Source code + Trace data)
 {context_text}
@@ -418,16 +381,10 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
     if source_vectorstore is None and not trace_docs:
         return "No documents available for re-analysis."
 
-    # Merge trace chunks into the vectorstore (in-memory only)
+    trace_vectorstore = None
     if trace_docs:
         trace_chunks = splitter.split_documents(trace_docs)
-        if source_vectorstore:
-            source_vectorstore.add_documents(trace_chunks)
-            vectorstore = source_vectorstore
-        else:
-            vectorstore = FAISS.from_documents(trace_chunks, embeddings)
-    else:
-        vectorstore = source_vectorstore
+        trace_vectorstore = FAISS.from_documents(trace_chunks, embeddings)
 
     # --- 3. Retrieve with feedback-enriched query ---
     console_errors = trace_summary.get("console_errors", [])
@@ -440,12 +397,15 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
         f"Find the source code and suggest a better fix."
     )
 
-    k = _calc_retrieval_k(vectorstore)
-    retrieved_docs = vectorstore.similarity_search(retrieval_query, k=k)
-    print(f"[RAG] Retrieved {len(retrieved_docs)} relevant chunks")
-    _print_retrieved_chunks_for_llm(retrieved_docs)
+    source_hits: list[Document] = []
+    trace_hits: list[Document] = []
+    if source_vectorstore:
+        source_hits = source_vectorstore.similarity_search(retrieval_query, k=8)
+    if trace_vectorstore:
+        trace_hits = trace_vectorstore.similarity_search(retrieval_query, k=4)
+
+    retrieved_docs = _merge_unique_docs(source_hits, trace_hits, max_docs=12)
     context_text = "\n\n---\n\n".join(doc.page_content for doc in retrieved_docs)
-    source_manifest = _source_manifest(source_docs)
 
     # --- 4. LLM with feedback context ---
     llm = ChatOpenAI(
@@ -460,8 +420,6 @@ async def rag_reanalyze_with_feedback(state: dict, feedback: str) -> str:
 You previously suggested a fix for a bug, but the human reviewer has provided feedback.
 You must revise your analysis and provide an UPDATED fix based on the feedback.
 
-You also have an authoritative source file manifest. You MUST only reference and patch files that appear in that manifest.
-
 ## Previous Analysis
 {previous_analysis}
 
@@ -473,7 +431,6 @@ You also have an authoritative source file manifest. You MUST only reference and
 2. Re-examine the source code and trace data.
 3. Provide a REVISED root cause analysis and code fix.
 4. Make sure your fixes are CONSISTENT across all files — e.g. if one file writes data to localStorage in a certain format, any other file reading it must use the same format.
-5. NEVER invent filenames. If evidence is insufficient, say so explicitly and request more context.
 
 CRITICAL DIFF FORMAT RULES:
 - Each diff block MUST start with: --- a/FILENAME (the filename relative to the project)
@@ -485,7 +442,6 @@ CRITICAL DIFF FORMAT RULES:
 - Make sure to stick with the domain of web server while performing changes in end-points
 - Provide a SEPARATE diff block for each independent fix
 - Each - line and + line should contain the code WITHOUT leading whitespace (indentation is auto-detected)
-- Every filename used in diff blocks MUST exist in the provided source file manifest
 
 Format your response as:
 
@@ -515,9 +471,6 @@ Format your response as:
 
 ### BUG REPORT
 {bug_report}
-
-### SOURCE FILE MANIFEST (authoritative)
-{source_manifest}
 
 ### RETRIEVED CONTEXT (Source code + Trace data)
 {context_text}
